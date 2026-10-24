@@ -20,6 +20,12 @@ public class Investment {
     private BigDecimal accruedEarnings = BigDecimal.ZERO.setScale(MONEY_SCALE);
     private DayCountConvention dayCountConvention = DayCountConvention.THIRTY_360;
     private TaxRegime taxRegime = TaxRegime.STANDARD;
+    private YieldPeriod yieldPeriod = YieldPeriod.DAILY;
+    private int maturityDays;
+    private int minimumStayDays;
+    private RedemptionFrequency redemptionFrequency = RedemptionFrequency.DAILY;
+    private IofOption iofOption = IofOption.THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS;
+    private IrOption irOption = IrOption.REGRESSIVE;
     private LocalDate applicationDate;
     private LocalDate lastUpdateDate;
     private int elapsedDays;
@@ -59,6 +65,12 @@ public class Investment {
     public LocalDate getLastUpdateDate() { return lastUpdateDate; }
     public DayCountConvention getDayCountConvention() { return dayCountConvention; }
     public TaxRegime getTaxRegime() { return taxRegime; }
+    public YieldPeriod getYieldPeriod() { return yieldPeriod; }
+    public int getMaturityDays() { return maturityDays; }
+    public int getMinimumStayDays() { return minimumStayDays; }
+    public RedemptionFrequency getRedemptionFrequency() { return redemptionFrequency; }
+    public IofOption getIofOption() { return iofOption; }
+    public IrOption getIrOption() { return irOption; }
 
     public void setName(String name) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Nome do investimento obrigatório.");
@@ -101,6 +113,54 @@ public class Investment {
 
     public void setTaxRegime(TaxRegime regime) {
         this.taxRegime = Objects.requireNonNull(regime, "Regime tributário obrigatório.");
+        if (regime == TaxRegime.TAX_FREE) {
+            iofOption = IofOption.EXEMPT;
+            irOption = IrOption.EXEMPT;
+        } else {
+            iofOption = IofOption.THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS;
+            irOption = IrOption.REGRESSIVE;
+        }
+    }
+
+    public void setYieldPeriod(YieldPeriod period) {
+        Objects.requireNonNull(period, "Periodicidade de rendimento obrigatória.");
+        if (period == YieldPeriod.AT_MATURITY && maturityDays <= 0) {
+            throw new IllegalArgumentException("Configure os dias até o vencimento antes de usar rendimento no vencimento.");
+        }
+        this.yieldPeriod = period;
+    }
+
+    public void setMaturityDays(int days) {
+        if (days < 0) throw new IllegalArgumentException("Dias até o vencimento não podem ser negativos.");
+        if (minimumStayDays > days && days > 0) {
+            throw new IllegalArgumentException("Vencimento não pode ser anterior à permanência mínima.");
+        }
+        if (yieldPeriod == YieldPeriod.AT_MATURITY && days == 0) {
+            throw new IllegalArgumentException("Dias até o vencimento devem ser positivos para rendimento no vencimento.");
+        }
+        maturityDays = days;
+    }
+
+    public void setMinimumStayDays(int days) {
+        if (days < 0) throw new IllegalArgumentException("Permanência mínima não pode ser negativa.");
+        if (maturityDays > 0 && days > maturityDays) {
+            throw new IllegalArgumentException("Permanência mínima não pode exceder o vencimento.");
+        }
+        minimumStayDays = days;
+    }
+
+    public void setRedemptionFrequency(RedemptionFrequency frequency) {
+        this.redemptionFrequency = Objects.requireNonNull(frequency, "Frequência de resgate obrigatória.");
+    }
+
+    public void setIofOption(IofOption option) {
+        this.iofOption = Objects.requireNonNull(option, "Opção de IOF obrigatória.");
+        syncLegacyTaxRegime();
+    }
+
+    public void setIrOption(IrOption option) {
+        this.irOption = Objects.requireNonNull(option, "Opção de IR obrigatória.");
+        syncLegacyTaxRegime();
     }
 
     public void setApplicationDate(LocalDate date) {
@@ -116,6 +176,28 @@ public class Investment {
 
     public void incrementDay() { incrementarDia(); }
     public void incrementApplicationDay() { incrementarDiaAplicacao(); }
+
+    public boolean isMatured() {
+        return maturityDays > 0 && elapsedDays >= maturityDays;
+    }
+
+    public boolean canRedeem() {
+        return elapsedDays >= minimumStayDays && isRedemptionDate();
+    }
+
+    public boolean isYieldDate() {
+        return switch (yieldPeriod) {
+            case DAILY -> true;
+            case MONTHLY_30_DAYS, QUARTERLY_90_DAYS, HALF_YEARLY_180_DAYS, YEARLY_365_DAYS ->
+                    applicationDays > 0 && applicationDays % yieldPeriod.days() == 0;
+            case AT_MATURITY -> isMatured();
+        };
+    }
+
+    private boolean isRedemptionDate() {
+        int interval = redemptionFrequency.days();
+        return interval == 1 || (applicationDays > 0 && applicationDays % interval == 0);
+    }
 
     /**
      * Processa o dia informado. A taxa mensal é nominal sobre base 30/360:
@@ -155,6 +237,14 @@ public class Investment {
 
     public void restoreState(BigDecimal balance, BigDecimal accruedEarnings, LocalDate lastUpdateDate,
                              int elapsedDays, int applicationDays, int operationCount) {
+        restoreState(balance, accruedEarnings, lastUpdateDate, elapsedDays, applicationDays, operationCount,
+                YieldPeriod.DAILY, 0, 0, RedemptionFrequency.DAILY, iofOption, irOption);
+    }
+
+    public void restoreState(BigDecimal balance, BigDecimal accruedEarnings, LocalDate lastUpdateDate,
+                             int elapsedDays, int applicationDays, int operationCount, YieldPeriod yieldPeriod,
+                             int maturityDays, int minimumStayDays, RedemptionFrequency redemptionFrequency,
+                             IofOption iofOption, IrOption irOption) {
         this.balance = nonNegativeMoney(balance, "Saldo");
         this.accruedEarnings = nonNegativeMoney(accruedEarnings, "Rendimento");
         this.lastUpdateDate = Objects.requireNonNull(lastUpdateDate, "Data de atualização obrigatória.");
@@ -165,6 +255,18 @@ public class Investment {
         this.elapsedDays = elapsedDays;
         this.applicationDays = applicationDays;
         this.operationCount = operationCount;
+        this.maturityDays = 0;
+        this.minimumStayDays = 0;
+        this.yieldPeriod = YieldPeriod.DAILY;
+        this.redemptionFrequency = RedemptionFrequency.DAILY;
+        this.iofOption = IofOption.THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS;
+        this.irOption = IrOption.REGRESSIVE;
+        setMaturityDays(maturityDays);
+        setMinimumStayDays(minimumStayDays);
+        setYieldPeriod(yieldPeriod);
+        setRedemptionFrequency(redemptionFrequency);
+        setIofOption(iofOption);
+        setIrOption(irOption);
     }
 
     public boolean isBusinessDay(LocalDate date) {
@@ -197,15 +299,16 @@ public class Investment {
     }
 
     private BigDecimal iofRate() {
-        int days = Math.max(1, elapsedDays);
-        if (days >= 30) return BigDecimal.ZERO;
-        // Tabela regressiva oficial expressa em pontos percentuais inteiros: 96, 93, ..., 3, 0.
-        int percentage = BigDecimal.valueOf(30L - days).multiply(BigDecimal.valueOf(100))
-                .divide(THIRTY, 0, RoundingMode.DOWN).intValueExact();
-        return BigDecimal.valueOf(percentage).movePointLeft(2);
+        return switch (iofOption) {
+            case EXEMPT -> BigDecimal.ZERO;
+            case THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS ->
+                    elapsedDays < 30 ? new BigDecimal("0.035") : BigDecimal.ZERO;
+            case THREE_POINT_FIVE_PERCENT_ALWAYS -> new BigDecimal("0.035");
+        };
     }
 
     private BigDecimal irRate() {
+        if (irOption == IrOption.EXEMPT) return BigDecimal.ZERO;
         if (elapsedDays <= 180) return new BigDecimal("0.225");
         if (elapsedDays <= 360) return new BigDecimal("0.20");
         if (elapsedDays <= 720) return new BigDecimal("0.175");
@@ -227,4 +330,9 @@ public class Investment {
     }
 
     private static BigDecimal moneyZero() { return BigDecimal.ZERO.setScale(MONEY_SCALE); }
+
+    private void syncLegacyTaxRegime() {
+        taxRegime = iofOption == IofOption.EXEMPT && irOption == IrOption.EXEMPT
+                ? TaxRegime.TAX_FREE : TaxRegime.STANDARD;
+    }
 }
