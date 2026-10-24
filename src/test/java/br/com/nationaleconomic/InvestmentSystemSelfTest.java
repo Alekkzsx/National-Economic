@@ -42,8 +42,6 @@ public final class InvestmentSystemSelfTest {
         system.updateAll(LocalDate.of(2026, 1, 2));
         check(investment.getBalance().compareTo(new BigDecimal("100.10")) == 0, "rendimento diário arredondado");
         check(!investment.isYieldDate() && !investment.canRedeem(), "periodicidade e carência antes do prazo");
-        for (int day = 0; day < 89; day++) investment.incrementarDia();
-        check(investment.isYieldDate() && investment.canRedeem(), "rendimento trimestral aos 90 dias");
         system.registerOperation(person.getCpf(), "INV-1",
                 new FinancialOperation(LocalDate.of(2026, 1, 2), new BigDecimal("5"), "Aporte", OperationType.DEPOSIT));
         check(system.getStatement(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
@@ -67,13 +65,66 @@ public final class InvestmentSystemSelfTest {
             check(restoredInvestment.getIofOption() == IofOption.THREE_POINT_FIVE_PERCENT_ALWAYS,
                     "opção IOF restaurada");
             check(restoredInvestment.getIrOption() == IrOption.EXEMPT, "opção IR restaurada");
+            check(restoredInvestment.getPendingEarnings().compareTo(investment.getPendingEarnings()) == 0,
+                    "rendimento pendente restaurado");
+            check(restoredInvestment.getDaysSinceYield() == investment.getDaysSinceYield(),
+                    "contador de periodicidade restaurado");
+            system.updateAll(LocalDate.of(2026, 4, 1));
+            restored.updateAll(LocalDate.of(2026, 4, 1));
+            check(restored.getBalance(person.getCpf(), "INV-1").compareTo(
+                    system.getBalance(person.getCpf(), "INV-1")) == 0, "capitalização após restauração");
+            check(investment.getPendingEarnings().signum() == 0, "rendimento trimestral capitalizado no dia 90");
         } finally {
             Files.deleteIfExists(file);
         }
 
+        Investment periodic = new Investment("Mensal", "INV-MONTHLY", new BigDecimal("100000.00"),
+                new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
+        periodic.setYieldPeriod(YieldPeriod.MONTHLY_30_DAYS);
+        periodic.update(LocalDate.of(2026, 1, 30)); // 29 dias corridos
+        check(periodic.getCreditedBalance().compareTo(new BigDecimal("100000.00")) == 0,
+                "rendimento mensal ainda não capitalizado");
+        check(periodic.getPendingEarnings().signum() > 0, "rendimento mensal acumulado como pendente");
+        periodic.update(LocalDate.of(2026, 2, 2)); // dia 30 caiu no sábado, crédito no próximo dia útil
+        check(periodic.getPendingEarnings().signum() == 0, "rendimento mensal creditado");
+        check(periodic.getCreditedBalance().compareTo(new BigDecimal("100000.00")) > 0,
+                "periodicidade mensal altera a capitalização");
+        Investment daily = new Investment("Diário", "INV-DAILY", new BigDecimal("100000.00"),
+                new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
+        daily.update(LocalDate.of(2026, 1, 30));
+        daily.update(LocalDate.of(2026, 2, 2));
+        check(daily.getCreditedBalance().compareTo(periodic.getCreditedBalance()) > 0,
+                "capitalização diária difere da mensal");
+        Investment atMaturity = new Investment("Vencimento", "INV-MATURITY", new BigDecimal("100000.00"),
+                new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
+        atMaturity.setMaturityDays(30);
+        atMaturity.setYieldPeriod(YieldPeriod.AT_MATURITY);
+        atMaturity.update(LocalDate.of(2026, 1, 30));
+        check(atMaturity.getCreditedBalance().compareTo(new BigDecimal("100000.00")) == 0,
+                "rendimento de vencimento aguarda a maturidade");
+        atMaturity.update(LocalDate.of(2026, 2, 2));
+        check(atMaturity.isMatured() && atMaturity.getPendingEarnings().signum() == 0
+                        && atMaturity.getCreditedBalance().compareTo(new BigDecimal("100000.00")) > 0,
+                "rendimento creditado ao atingir maturidade");
+
+        Investment redemption = new Investment("Resgate", "INV-REDEEM", new BigDecimal("100.00"),
+                new BigDecimal("0"), LocalDate.of(2026, 1, 1));
+        redemption.setMinimumStayDays(10);
+        redemption.setRedemptionFrequency(RedemptionFrequency.MONTHLY);
+        check(!redemption.canRedeem(), "canRedeem preserva carência antes do vencimento");
+        expectRejected(() -> redemption.apply(new FinancialOperation(LocalDate.of(2026, 1, 10),
+                new BigDecimal("1"), "Resgate antecipado", OperationType.WITHDRAWAL)), "carência");
+        expectRejected(() -> redemption.apply(new FinancialOperation(LocalDate.of(2026, 1, 30),
+                new BigDecimal("1"), "Resgate fora da frequência", OperationType.WITHDRAWAL)), "frequência mensal");
+        redemption.apply(new FinancialOperation(LocalDate.of(2026, 1, 31),
+                new BigDecimal("1"), "Resgate mensal permitido", OperationType.WITHDRAWAL));
+        expectRejected(() -> redemption.apply(new FinancialOperation(LocalDate.of(2026, 2, 1),
+                new BigDecimal("1"), "Segundo resgate fora da frequência", OperationType.WITHDRAWAL)),
+                "intervalo de resgate");
+
         boolean insufficientFundsRejected = false;
         try {
-            system.registerOperation(person.getCpf(), "INV-1", new FinancialOperation(LocalDate.of(2026, 1, 2),
+            system.registerOperation(person.getCpf(), "INV-1", new FinancialOperation(LocalDate.of(2026, 4, 1),
                     new BigDecimal("9999"), "Retirada", OperationType.WITHDRAWAL));
         } catch (IllegalArgumentException expected) {
             insufficientFundsRejected = true;
@@ -137,9 +188,34 @@ public final class InvestmentSystemSelfTest {
         } finally {
             Files.deleteIfExists(legacyFile);
         }
+
+        Path version2File = Path.of(".investment-system-v2-self-test.tsv");
+        try {
+            Files.write(version2File, List.of(
+                    "NATIONAL-ECONOMIC\t2",
+                    "C\t52998224725\tAna Silva\t11987654321\t12\t3456",
+                    "I\t52998224725\tOLD-2\tFormato v2\t100.00\t0.03\t2026-01-01\t100.00\t0.00\t2026-01-01\t0\t0\t0\tTHIRTY_360\tSTANDARD\tMONTHLY_30_DAYS\t180\t30\tMONTHLY\tEXEMPT\tREGRESSIVE"
+            ));
+            InvestmentSystem version2 = InvestmentSystem.load(version2File);
+            Investment oldInvestment = version2.getInvestments("52998224725").getFirst();
+            check(oldInvestment.getYieldPeriod() == YieldPeriod.MONTHLY_30_DAYS, "termos v2 preservados");
+            check(oldInvestment.getDaysSinceYield() == 0, "contador de rendimento v2 derivado");
+        } finally {
+            Files.deleteIfExists(version2File);
+        }
     }
 
     private static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
+    }
+
+    private static void expectRejected(Runnable action, String message) {
+        boolean rejected = false;
+        try {
+            action.run();
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        check(rejected, message + " deve ser rejeitado");
     }
 }
