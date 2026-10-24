@@ -9,8 +9,6 @@ import br.com.nationaleconomic.market.QuoteClient;
 import br.com.nationaleconomic.service.InvestmentSystem;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -133,12 +131,8 @@ public final class Main {
         }
         System.out.println("Clientes cadastrados:");
         for (ClientAccount client : clients) {
-            Object personalData = property(client, "getPersonalData", "personalData");
-            String name = firstText(property(personalData, "getName", "name"), "Nome não disponível");
-            String id = firstText(
-                    property(client, "getId", "getCpf", "getClientId", "id", "cpf", "clientId"),
-                    property(personalData, "getCpf", "getDocument", "cpf", "document"));
-            System.out.printf("- %s | CPF/identificador: %s%n", name, maskCpf(id));
+            PersonalData personalData = client.getPersonalData();
+            System.out.printf("- %s | CPF: %s%n", personalData.getName(), maskCpf(personalData.getCpf()));
         }
     }
 
@@ -150,21 +144,11 @@ public final class Main {
             return;
         }
         ClientAccount client = result.get();
-        Object personalData = property(client, "getPersonalData", "personalData");
-        String name = firstText(property(personalData, "getName", "name"), "Não disponível");
-        String id = firstText(property(client, "getId", "getCpf", "getClientId", "id", "cpf", "clientId"),
-                property(personalData, "getCpf", "getDocument", "cpf", "document"), clientId);
-        Object agency = property(client, "getAgencyNumber", "agencyNumber");
-        Object account = property(client, "getAccountNumber", "accountNumber");
-        Object mobile = property(personalData, "getMobile", "mobile");
-        System.out.println("Cliente: " + name);
-        System.out.println("CPF/identificador: " + maskCpf(id));
-        if (agency != null && account != null) {
-            System.out.println("Agência/conta: " + agency + "/" + account);
-        }
-        if (mobile != null) {
-            System.out.println("Celular: " + mobile);
-        }
+        PersonalData personalData = client.getPersonalData();
+        System.out.println("Cliente: " + personalData.getName());
+        System.out.println("CPF/identificador: " + maskCpf(personalData.getCpf()));
+        System.out.println("Agência/conta: " + client.getAgencyNumber() + "/" + client.getAccountNumber());
+        System.out.println("Celular: " + personalData.getMobile());
         System.out.println("Saldo total: " + money(system.getClientBalance(clientId)));
     }
 
@@ -188,11 +172,8 @@ public final class Main {
         System.out.println("Aplicações de " + maskCpf(clientId) + ":");
         for (Investment investment : investments) {
             System.out.printf("- %s | número: %s | saldo: %s | aporte inicial: %s | taxa mensal: %s%n",
-                    firstText(property(investment, "getName", "name"), "Sem nome"),
-                    firstText(property(investment, "getNumber", "number"), "Sem número"),
-                    moneyValue(property(investment, "getBalance", "balance")),
-                    moneyValue(property(investment, "getInitialAmount", "initialAmount")),
-                    displayValue(property(investment, "getMonthlyRate", "monthlyRate")));
+                    investment.getName(), investment.getNumber(), money(investment.getBalance()),
+                    money(investment.getInitialAmount()), investment.getMonthlyRate());
         }
     }
 
@@ -230,10 +211,7 @@ public final class Main {
         System.out.printf("Extrato de %s, de %s a %s:%n", maskCpf(clientId), from, to);
         for (FinancialOperation operation : operations) {
             System.out.printf("- %s | %s | %s | %s%n",
-                    displayValue(property(operation, "getDate", "getOperationDate", "date", "operationDate")),
-                    displayValue(property(operation, "getType", "getOperationType", "type", "operationType")),
-                    moneyValue(property(operation, "getAmount", "getValue", "amount", "value")),
-                    firstText(property(operation, "getDescription", "getNote", "description", "note"), ""));
+                    operation.date(), operation.type(), money(operation.amount()), operation.description());
         }
     }
 
@@ -306,9 +284,9 @@ public final class Main {
             }
             System.out.println("Cotações das aplicações de " + maskCpf(clientId) + ":");
             for (Investment investment : investments) {
-                String key = firstText(property(investment, "getNumber", "number"), "");
+                String key = investment.getNumber();
                 BigDecimal quote = quotes.get(key);
-                System.out.printf("- %s: %s%n", key, quote == null ? "cotação indisponível" : moneyValue(quote));
+                System.out.printf("- %s: %s%n", key, quote == null ? "cotação indisponível" : money(quote));
             }
         } catch (IOException e) {
             System.out.println("Falha ao consultar o servidor de cotações: " + messageOf(e));
