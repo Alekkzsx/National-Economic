@@ -2,9 +2,13 @@ package br.com.nationaleconomic.app;
 
 import br.com.nationaleconomic.domain.ClientAccount;
 import br.com.nationaleconomic.domain.FinancialOperation;
+import br.com.nationaleconomic.domain.IofOption;
+import br.com.nationaleconomic.domain.IrOption;
 import br.com.nationaleconomic.domain.Investment;
 import br.com.nationaleconomic.domain.OperationType;
 import br.com.nationaleconomic.domain.PersonalData;
+import br.com.nationaleconomic.domain.RedemptionFrequency;
+import br.com.nationaleconomic.domain.YieldPeriod;
 import br.com.nationaleconomic.market.QuoteClient;
 import br.com.nationaleconomic.service.InvestmentSystem;
 
@@ -14,10 +18,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.text.Normalizer;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
+import java.util.function.Function;
 
 /**
  * Interface de terminal do SGI. A camada de apresentação apenas valida entradas
@@ -158,8 +165,110 @@ public final class Main {
         String number = readRequired("Número da aplicação: ");
         BigDecimal initialValue = readPositiveAmount("Valor inicial: ");
         BigDecimal rate = readMonthlyRate();
-        system.registerInvestment(clientId, new Investment(name, number, initialValue, rate));
+        Investment investment = new Investment(name, number, initialValue, rate);
+        if (readYesNo("Usar configuração padrão da aplicação? (s/n): ")) {
+            System.out.println("""
+                    Configuração padrão do Investment:
+                    - rendimento diário; sem vencimento e sem permanência mínima;
+                    - resgate diário;
+                    - IOF de 3,5% nos primeiros 29 dias; IR regressivo.
+                    """);
+        } else {
+            configureInvestment(investment);
+        }
+        system.registerInvestment(clientId, investment);
         System.out.println("Aplicação cadastrada com sucesso.");
+    }
+
+    private void configureInvestment(Investment investment) {
+        int maturityDays = readInt("Dias até o vencimento (0 = sem vencimento): ", 0, Integer.MAX_VALUE);
+        investment.setMaturityDays(maturityDays);
+
+        int maxMinimumStay = maturityDays == 0 ? Integer.MAX_VALUE : maturityDays;
+        int minimumStayDays = readInt("Permanência mínima em dias: ", 0, maxMinimumStay);
+        investment.setMinimumStayDays(minimumStayDays);
+
+        YieldPeriod[] yieldOptions = maturityDays == 0
+                ? Arrays.stream(YieldPeriod.values()).filter(period -> period != YieldPeriod.AT_MATURITY)
+                        .toArray(YieldPeriod[]::new)
+                : YieldPeriod.values();
+        investment.setYieldPeriod(readEnumChoice("Periodicidade de rendimento", yieldOptions,
+                Main::yieldPeriodLabel));
+        investment.setRedemptionFrequency(readEnumChoice("Frequência de resgate",
+                RedemptionFrequency.values(), Main::redemptionFrequencyLabel));
+        investment.setIofOption(readEnumChoice("Opção de IOF", IofOption.values(), Main::iofOptionLabel));
+        investment.setIrOption(readEnumChoice("Opção de IR", IrOption.values(), Main::irOptionLabel));
+    }
+
+    private <E extends Enum<E>> E readEnumChoice(String field, E[] choices, Function<E, String> label) {
+        System.out.println(field + " — escolha pelo número ou nome:");
+        for (int index = 0; index < choices.length; index++) {
+            E choice = choices[index];
+            System.out.printf("  %d. %s (%s)%n", index + 1, choice.name(), label.apply(choice));
+        }
+        while (true) {
+            String input = readRequired(field + ": ").trim();
+            try {
+                int index = Integer.parseInt(input);
+                if (index >= 1 && index <= choices.length) {
+                    return choices[index - 1];
+                }
+            } catch (NumberFormatException ignored) {
+                // Também aceita o nome do enum ou sua descrição localizada.
+            }
+            String normalized = normalizeChoice(input);
+            for (E choice : choices) {
+                if (normalizeChoice(choice.name()).equals(normalized)
+                        || normalizeChoice(label.apply(choice)).equals(normalized)) {
+                    return choice;
+                }
+            }
+            System.out.println("Escolha inválida. Informe um dos números ou nomes exibidos.");
+        }
+    }
+
+    private static String normalizeChoice(String value) {
+        return Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replaceAll("[^A-Za-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "")
+                .toUpperCase();
+    }
+
+    private static String yieldPeriodLabel(YieldPeriod period) {
+        return switch (period) {
+            case DAILY -> "diário";
+            case MONTHLY_30_DAYS -> "a cada 30 dias";
+            case QUARTERLY_90_DAYS -> "a cada 90 dias";
+            case HALF_YEARLY_180_DAYS -> "a cada 180 dias";
+            case YEARLY_365_DAYS -> "a cada 365 dias";
+            case AT_MATURITY -> "no vencimento";
+        };
+    }
+
+    private static String redemptionFrequencyLabel(RedemptionFrequency frequency) {
+        return switch (frequency) {
+            case DAILY -> "diária";
+            case MONTHLY -> "mensal (30 dias)";
+            case QUARTERLY -> "trimestral (90 dias)";
+            case HALF_YEARLY -> "semestral (180 dias)";
+            case YEARLY -> "anual (365 dias)";
+        };
+    }
+
+    private static String iofOptionLabel(IofOption option) {
+        return switch (option) {
+            case EXEMPT -> "isento";
+            case THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS -> "3,5% nos primeiros 29 dias";
+            case THREE_POINT_FIVE_PERCENT_ALWAYS -> "3,5% durante todo o prazo";
+        };
+    }
+
+    private static String irOptionLabel(IrOption option) {
+        return switch (option) {
+            case EXEMPT -> "isento";
+            case REGRESSIVE -> "regressivo por prazo";
+        };
     }
 
     private void listInvestments() {
