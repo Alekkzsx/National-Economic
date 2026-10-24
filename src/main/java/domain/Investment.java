@@ -8,35 +8,67 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
+/**
+ * Reúne os dados e as regras de cálculo de uma aplicação financeira.
+ *
+ * <p>Os valores monetários usam {@link BigDecimal}. Dias corridos controlam
+ * carência, vencimento, periodicidade e tributação; a apuração de juros ocorre
+ * em atualizações de dias úteis.</p>
+ */
 public class Investment {
+    /** Quantidade padrão de casas decimais usada nos valores monetários. */
     private static final int MONEY_SCALE = 2;
+    /** Precisão intermediária para os cálculos de taxa e juros. */
     private static final MathContext RATE_CONTEXT = MathContext.DECIMAL128;
+    /** Nome legível da aplicação. */
     private String name;
+    /** Identificador único da aplicação no sistema. */
     private String number;
+    /** Valor originalmente aplicado. */
     private BigDecimal initialAmount;
+    /** Saldo que já recebeu os rendimentos periódicos. */
     private BigDecimal balance;
+    /** Taxa mensal representada como fração decimal. */
     private BigDecimal monthlyRate;
+    /** Rendimentos já incorporados ao saldo. */
     private BigDecimal accruedEarnings = BigDecimal.ZERO.setScale(MONEY_SCALE);
+    /** Rendimentos apurados que aguardam a data de crédito configurada. */
     private BigDecimal pendingEarnings = BigDecimal.ZERO.setScale(MONEY_SCALE);
+    /** Convenção usada para converter a taxa mensal em taxa diária. */
     private DayCountConvention dayCountConvention = DayCountConvention.THIRTY_360;
+    /** Regime agregado, mantido em conjunto com as opções específicas de imposto. */
     private TaxRegime taxRegime = TaxRegime.STANDARD;
+    /** Periodicidade de crédito dos rendimentos pendentes. */
     private YieldPeriod yieldPeriod = YieldPeriod.DAILY;
+    /** Prazo até o vencimento em dias corridos; zero significa sem vencimento. */
     private int maturityDays;
+    /** Período mínimo em dias corridos antes de permitir resgate. */
     private int minimumStayDays;
+    /** Frequência mínima entre datas em que o resgate é permitido. */
     private RedemptionFrequency redemptionFrequency = RedemptionFrequency.DAILY;
+    /** Política de cálculo do IOF. */
     private IofOption iofOption = IofOption.THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS;
+    /** Política de cálculo do Imposto de Renda. */
     private IrOption irOption = IrOption.REGRESSIVE;
+    /** Data em que a aplicação foi iniciada. */
     private LocalDate applicationDate;
+    /** Última data processada, para não atualizar o mesmo intervalo novamente. */
     private LocalDate lastUpdateDate;
+    /** Total de dias corridos desde a aplicação. */
     private int elapsedDays;
+    /** Total de dias úteis considerados para correção financeira. */
     private int applicationDays;
+    /** Dias corridos desde o último crédito de rendimento. */
     private int daysSinceYield;
+    /** Quantidade de operações já registradas na aplicação. */
     private int operationCount;
 
+    /** Cria uma aplicação com início na data corrente. */
     public Investment(String name, String number, BigDecimal initialAmount, BigDecimal monthlyRate) {
         this(name, number, initialAmount, monthlyRate, LocalDate.now());
     }
 
+    /** Cria uma aplicação com a data inicial informada pelo chamador. */
     public Investment(String name, String number, BigDecimal initialAmount, BigDecimal monthlyRate,
                       LocalDate applicationDate) {
         setName(name);
@@ -47,46 +79,78 @@ public class Investment {
         this.balance = this.initialAmount;
     }
 
+    /** Retorna o nome cadastrado da aplicação. */
     public String getName() { return name; }
+    /** Retorna o identificador da aplicação. */
     public String getNumber() { return number; }
+    /** Retorna o aporte inicial. */
     public BigDecimal getInitialAmount() { return initialAmount; }
+    /** Retorna a taxa mensal fracionária. */
     public BigDecimal getMonthlyRate() { return monthlyRate; }
+    /** Retorna o saldo bruto, incluindo rendimentos pendentes. */
     public BigDecimal getBalance() { return getGrossBalance(); }
+    /** Retorna o saldo que já recebeu rendimentos creditados. */
     public BigDecimal getCreditedBalance() { return balance; }
+    /** Soma o saldo creditado aos rendimentos que aguardam crédito. */
     public BigDecimal getGrossBalance() { return balance.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP); }
+    /** Retorna o saldo bruto descontados os impostos devidos. */
     public BigDecimal getNetBalance() { return getGrossBalance().subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
+    /** Soma os rendimentos creditados aos rendimentos pendentes. */
     public BigDecimal getGrossEarnings() { return accruedEarnings.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP); }
+    /** Retorna somente os rendimentos já incorporados ao saldo. */
     public BigDecimal getCreditedEarnings() { return accruedEarnings; }
+    /** Retorna os rendimentos após deduzir os tributos atuais. */
     public BigDecimal getNetEarnings() { return getGrossEarnings().subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
+    /** Calcula o IOF sobre os rendimentos conforme a opção configurada. */
     public BigDecimal getIof() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : getGrossEarnings().multiply(iofRate()).setScale(2, RoundingMode.HALF_UP); }
+    /** Calcula o IR sobre os rendimentos restantes depois do IOF. */
     public BigDecimal getIr() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : getGrossEarnings().subtract(getIof()).multiply(irRate()).setScale(2, RoundingMode.HALF_UP); }
+    /** Soma os impostos calculados para a posição atual. */
     public BigDecimal getTaxes() { return getIof().add(getIr()).setScale(2, RoundingMode.HALF_UP); }
+    /** Retorna a contagem de dias corridos desde o início. */
     public int getElapsedDays() { return elapsedDays; }
+    /** Retorna a contagem de dias úteis considerados na correção. */
     public int getApplicationDays() { return applicationDays; }
+    /** Retorna a quantidade de operações registradas. */
     public int getOperationCount() { return operationCount; }
+    /** Retorna os rendimentos que ainda aguardam crédito. */
     public BigDecimal getPendingEarnings() { return pendingEarnings; }
+    /** Retorna os dias acumulados desde o último crédito de rendimento. */
     public int getDaysSinceYield() { return daysSinceYield; }
+    /** Retorna a data de início da aplicação. */
     public LocalDate getApplicationDate() { return applicationDate; }
+    /** Retorna a data da última atualização processada. */
     public LocalDate getLastUpdateDate() { return lastUpdateDate; }
+    /** Retorna a convenção de dias usada na taxa diária. */
     public DayCountConvention getDayCountConvention() { return dayCountConvention; }
+    /** Retorna o regime tributário geral compatível. */
     public TaxRegime getTaxRegime() { return taxRegime; }
+    /** Retorna a periodicidade de crédito dos rendimentos. */
     public YieldPeriod getYieldPeriod() { return yieldPeriod; }
+    /** Retorna o vencimento em dias corridos, ou zero quando não configurado. */
     public int getMaturityDays() { return maturityDays; }
+    /** Retorna a carência em dias corridos. */
     public int getMinimumStayDays() { return minimumStayDays; }
+    /** Retorna a frequência permitida para resgate. */
     public RedemptionFrequency getRedemptionFrequency() { return redemptionFrequency; }
+    /** Retorna a política de IOF configurada. */
     public IofOption getIofOption() { return iofOption; }
+    /** Retorna a política de IR configurada. */
     public IrOption getIrOption() { return irOption; }
 
+    /** Define um nome obrigatório, removendo espaços externos. */
     public void setName(String name) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Nome do investimento obrigatório.");
         this.name = name.trim();
     }
 
+    /** Define um identificador obrigatório, removendo espaços externos. */
     public void setNumber(String number) {
         if (number == null || number.isBlank()) throw new IllegalArgumentException("Número do investimento obrigatório.");
         this.number = number.trim();
     }
 
+    /** Permite alterar o aporte somente antes de operações ou rendimentos. */
     public void setInitialAmount(BigDecimal amount) {
         BigDecimal value = positiveMoney(amount, "Valor inicial");
         if (balance != null) {
@@ -100,6 +164,7 @@ public class Investment {
         this.initialAmount = value;
     }
 
+    /** Define a taxa mensal como fração entre zero e um, inclusive. */
     public void setMonthlyRate(BigDecimal monthlyRate) {
         Objects.requireNonNull(monthlyRate, "Taxa mensal obrigatória.");
         if (monthlyRate.signum() < 0 || monthlyRate.compareTo(BigDecimal.ONE) > 0) {
@@ -108,14 +173,17 @@ public class Investment {
         this.monthlyRate = monthlyRate;
     }
 
+    /** Define diretamente um saldo não negativo. */
     public void setBalance(BigDecimal balance) {
         this.balance = nonNegativeMoney(balance, "Saldo");
     }
 
+    /** Define a base anual usada para converter taxa mensal em diária. */
     public void setDayCountConvention(DayCountConvention convention) {
         this.dayCountConvention = Objects.requireNonNull(convention, "Convenção de dias obrigatória.");
     }
 
+    /** Define o regime tributário geral e sincroniza as opções de IOF e IR. */
     public void setTaxRegime(TaxRegime regime) {
         this.taxRegime = Objects.requireNonNull(regime, "Regime tributário obrigatório.");
         if (regime == TaxRegime.TAX_FREE) {
@@ -127,6 +195,7 @@ public class Investment {
         }
     }
 
+    /** Define a periodicidade; rendimento no vencimento exige vencimento positivo. */
     public void setYieldPeriod(YieldPeriod period) {
         Objects.requireNonNull(period, "Periodicidade de rendimento obrigatória.");
         if (period == YieldPeriod.AT_MATURITY && maturityDays <= 0) {
@@ -135,6 +204,7 @@ public class Investment {
         this.yieldPeriod = period;
     }
 
+    /** Define o vencimento e verifica sua coerência com carência e rendimento. */
     public void setMaturityDays(int days) {
         if (days < 0) throw new IllegalArgumentException("Dias até o vencimento não podem ser negativos.");
         if (minimumStayDays > days && days > 0) {
@@ -146,6 +216,7 @@ public class Investment {
         maturityDays = days;
     }
 
+    /** Define o prazo mínimo de permanência, sem ultrapassar o vencimento. */
     public void setMinimumStayDays(int days) {
         if (days < 0) throw new IllegalArgumentException("Permanência mínima não pode ser negativa.");
         if (maturityDays > 0 && days > maturityDays) {
@@ -154,20 +225,24 @@ public class Investment {
         minimumStayDays = days;
     }
 
+    /** Define a frequência mínima permitida entre retiradas. */
     public void setRedemptionFrequency(RedemptionFrequency frequency) {
         this.redemptionFrequency = Objects.requireNonNull(frequency, "Frequência de resgate obrigatória.");
     }
 
+    /** Define a opção de IOF e atualiza o regime geral correspondente. */
     public void setIofOption(IofOption option) {
         this.iofOption = Objects.requireNonNull(option, "Opção de IOF obrigatória.");
         syncLegacyTaxRegime();
     }
 
+    /** Define a opção de IR e atualiza o regime geral correspondente. */
     public void setIrOption(IrOption option) {
         this.irOption = Objects.requireNonNull(option, "Opção de IR obrigatória.");
         syncLegacyTaxRegime();
     }
 
+    /** Define a data inicial e a usa como referência da primeira atualização. */
     public void setApplicationDate(LocalDate date) {
         this.applicationDate = Objects.requireNonNull(date, "Data de aplicação obrigatória.");
         if (lastUpdateDate == null) lastUpdateDate = date;
@@ -182,14 +257,20 @@ public class Investment {
     /** Acrescenta um dia de aplicação; usado apenas para dias úteis. */
     public void incrementarDiaAplicacao() { applicationDays++; }
 
+    /** Alias em inglês para incrementar o contador de dias corridos. */
     public void incrementDay() { incrementarDia(); }
+    /** Alias em inglês para incrementar o contador de dias de aplicação. */
     public void incrementApplicationDay() { incrementarDiaAplicacao(); }
 
+    /** Informa se o prazo configurado de vencimento já foi alcançado. */
     public boolean isMatured() {
         return maturityDays > 0 && elapsedDays >= maturityDays;
     }
 
-    /** Verifica carência e frequência de resgate na posição atual da aplicação. */
+    /**
+     * Informa se, na posição atual do contador, carência e frequência permitem
+     * resgate. Operações datadas validam a data do lançamento separadamente.
+     */
     public boolean canRedeem() {
         return elapsedDays >= minimumStayDays && isRedemptionDate();
     }
@@ -205,6 +286,7 @@ public class Investment {
     }
 
     private boolean isYieldDue() {
+        // Crédito em data de vencimento só é avaliado contra a maturidade configurada.
         return yieldPeriod == YieldPeriod.AT_MATURITY ? isMatured() : isYieldDate();
     }
 
@@ -214,6 +296,7 @@ public class Investment {
             accruedEarnings = accruedEarnings.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
             pendingEarnings = moneyZero();
         }
+        // Mantém apenas dias excedentes ao período para o próximo ciclo de crédito.
         if (yieldPeriod != YieldPeriod.AT_MATURITY) {
             daysSinceYield %= yieldPeriod.days();
         }
@@ -225,6 +308,7 @@ public class Investment {
     }
 
     private boolean canRedeemOn(LocalDate date) {
+        // A operação usa a data informada, não o contador do último updateAll.
         long days = ChronoUnit.DAYS.between(applicationDate, date);
         int interval = redemptionFrequency.days();
         return days >= minimumStayDays && (interval == 1 || (days > 0 && days % interval == 0));
@@ -240,12 +324,15 @@ public class Investment {
         if (!isBusinessDay(date)) return;
         if (lastUpdateDate != null && !date.isAfter(lastUpdateDate)) return;
 
+        // Percorre todos os dias não processados para manter os contadores corretos,
+        // ainda que a aplicação seja atualizada depois de vários dias sem uso.
         LocalDate day = lastUpdateDate == null ? date : lastUpdateDate.plusDays(1);
         while (!day.isAfter(date)) {
             incrementarDia();
             if (isBusinessDay(day)) {
                 incrementarDiaAplicacao();
                 if (!day.isBefore(applicationDate)) {
+                    // Após o vencimento, não se acumulam novos rendimentos.
                     if (maturityDays == 0 || elapsedDays <= maturityDays) accrueOneBusinessDay();
                     if (isYieldDue()) creditPendingEarnings();
                 }
@@ -255,6 +342,7 @@ public class Investment {
         lastUpdateDate = date;
     }
 
+    /** Aplica o lançamento ao saldo, validando limite, data e regra de resgate. */
     public void apply(FinancialOperation operation) {
         Objects.requireNonNull(operation, "Operação obrigatória.");
         if (operationCount >= 100) throw new IllegalStateException("Limite de 100 operações por aplicação atingido.");
@@ -272,12 +360,20 @@ public class Investment {
         operationCount++;
     }
 
+    /**
+     * Restaura os dados do formato mais antigo, que não persistia termos
+     * avançados nem rendimentos pendentes.
+     */
     public void restoreState(BigDecimal balance, BigDecimal accruedEarnings, LocalDate lastUpdateDate,
                              int elapsedDays, int applicationDays, int operationCount) {
         restoreState(balance, accruedEarnings, lastUpdateDate, elapsedDays, applicationDays, operationCount,
                 YieldPeriod.DAILY, 0, 0, RedemptionFrequency.DAILY, iofOption, irOption);
     }
 
+    /**
+     * Restaura os termos avançados de uma versão que ainda não salvava o
+     * rendimento pendente nem o contador do ciclo atual.
+     */
     public void restoreState(BigDecimal balance, BigDecimal accruedEarnings, LocalDate lastUpdateDate,
                              int elapsedDays, int applicationDays, int operationCount, YieldPeriod yieldPeriod,
                              int maturityDays, int minimumStayDays, RedemptionFrequency redemptionFrequency,
@@ -288,6 +384,10 @@ public class Investment {
                         ? Math.max(1, elapsedDays + 1) : Math.max(1, yieldPeriod.days())));
     }
 
+    /**
+     * Restaura o estado completo da aplicação e valida os dados recuperados
+     * antes de permitir novas operações.
+     */
     public void restoreState(BigDecimal balance, BigDecimal accruedEarnings, LocalDate lastUpdateDate,
                              int elapsedDays, int applicationDays, int operationCount, YieldPeriod yieldPeriod,
                              int maturityDays, int minimumStayDays, RedemptionFrequency redemptionFrequency,
@@ -323,11 +423,12 @@ public class Investment {
         }
     }
 
+    /** Informa se a data não cai em sábado ou domingo. */
     public boolean isBusinessDay(LocalDate date) {
         return date.getDayOfWeek() != DayOfWeek.SATURDAY && date.getDayOfWeek() != DayOfWeek.SUNDAY;
     }
 
-    /** Mapeamento pedido: sábado=0, domingo=1, segunda=2, ... sexta=6. */
+    /** Mapeia o dia conforme o enunciado: sábado=0, domingo=1, segunda=2... */
     public static int calendarDayIndex(LocalDate date) {
         return switch (Objects.requireNonNull(date).getDayOfWeek()) {
             case SATURDAY -> 0;
@@ -342,6 +443,7 @@ public class Investment {
 
     private void accrueOneBusinessDay() {
         if (balance.signum() == 0) return;
+        // Converte a taxa mensal em taxa diária pela convenção selecionada.
         BigDecimal annualizedRate = monthlyRate.multiply(BigDecimal.valueOf(12), RATE_CONTEXT);
         BigDecimal dailyRate = annualizedRate.divide(
                 BigDecimal.valueOf(dayCountConvention.daysPerYear()), RATE_CONTEXT);
@@ -352,6 +454,7 @@ public class Investment {
     }
 
     private BigDecimal iofRate() {
+        // O IOF do exercício é uma alíquota fixa, não a tabela regressiva usual.
         return switch (iofOption) {
             case EXEMPT -> BigDecimal.ZERO;
             case THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS ->
@@ -361,6 +464,7 @@ public class Investment {
     }
 
     private BigDecimal irRate() {
+        // As faixas são aplicadas por dias corridos desde o cadastro da aplicação.
         if (irOption == IrOption.EXEMPT) return BigDecimal.ZERO;
         if (elapsedDays <= 180) return new BigDecimal("0.225");
         if (elapsedDays <= 360) return new BigDecimal("0.20");
@@ -368,6 +472,7 @@ public class Investment {
         return new BigDecimal("0.15");
     }
 
+    /** Arredonda um valor positivo para centavos antes de armazená-lo. */
     private static BigDecimal positiveMoney(BigDecimal value, String field) {
         Objects.requireNonNull(value, field + " obrigatório.");
         BigDecimal money = value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
@@ -375,6 +480,7 @@ public class Investment {
         return money;
     }
 
+    /** Arredonda um valor não negativo para centavos antes de armazená-lo. */
     private static BigDecimal nonNegativeMoney(BigDecimal value, String field) {
         Objects.requireNonNull(value, field + " obrigatório.");
         BigDecimal money = value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
@@ -382,9 +488,11 @@ public class Investment {
         return money;
     }
 
+    /** Cria zero com a mesma escala monetária usada nos demais cálculos. */
     private static BigDecimal moneyZero() { return BigDecimal.ZERO.setScale(MONEY_SCALE); }
 
     private void syncLegacyTaxRegime() {
+        // Mantém o enum legado em sincronia com as duas políticas independentes.
         taxRegime = iofOption == IofOption.EXEMPT && irOption == IrOption.EXEMPT
                 ? TaxRegime.TAX_FREE : TaxRegime.STANDARD;
     }

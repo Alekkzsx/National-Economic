@@ -4,20 +4,32 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.concurrent.CountDownLatch;
 
-/** Ponto de entrada do servidor para execução pelo terminal. */
+/**
+ * Inicializador de terminal do servidor de cotações.
+ * Os valores default são placeholders explícitos: não representam cotação ao vivo.
+ */
 public final class MarketServerMain {
+    /** Porta TCP usada quando nenhum argumento é informado. */
     private static final int DEFAULT_PORT = 5050;
+    /** Default de configuração da taxa SELICRA. */
     private static final BigDecimal DEFAULT_SELICRA = new BigDecimal("0.00");
+    /** Default de configuração da taxa CDIR. */
     private static final BigDecimal DEFAULT_CDIR = new BigDecimal("0.00");
+    /** Default manual para o dólar; não há consulta externa de mercado. */
     private static final BigDecimal DEFAULT_USD = new BigDecimal("0.00");
+    /** Default manual para o euro; não há consulta externa de mercado. */
     private static final BigDecimal DEFAULT_EUR = new BigDecimal("0.00");
 
+    /** Impede a instanciação: esta classe fornece somente o método main. */
     private MarketServerMain() {}
 
     /**
      * Uso: MarketServerMain [porta [SELICRA CDIR USD EUR]].
      * Os defaults são valores explícitos de configuração, não cotações em tempo real.
      * USD e EUR não têm integração de mercado: informe seus valores por argumentos.
+     *
+     * <p>O processo permanece ativo até receber um sinal de encerramento; o hook
+     * fecha o socket e o pool de threads antes da saída.</p>
      */
     public static void main(String[] args) throws IOException, InterruptedException {
         if (args.length != 0 && args.length != 1 && args.length != 5) {

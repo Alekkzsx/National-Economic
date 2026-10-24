@@ -33,15 +33,31 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+/**
+ * Fachada dos serviços do SGI: mantém clientes, aplicações, operações,
+ * consultas de saldo e persistência em arquivo.
+ *
+ * <p>Os métodos que leem ou alteram o estado são sincronizados para que uma
+ * mesma instância não tenha operações concorrentes inconsistentes. O arquivo
+ * TSV identifica cada linha como cliente ({@code C}), aplicação ({@code I})
+ * ou operação ({@code O}).</p>
+ */
 public class InvestmentSystem {
+    /** Limite de clientes definido para o sistema. */
     private static final int MAX_CLIENTS = 100;
+    /** Cabeçalho do formato atual de persistência, versão 3. */
     private static final String FORMAT_HEADER = "NATIONAL-ECONOMIC\t3";
+    /** Cabeçalho do formato anterior, que não guardava rendimentos pendentes. */
     private static final String VERSION_2_HEADER = "NATIONAL-ECONOMIC\t2";
+    /** Cabeçalho legado, anterior à configuração de prazos e impostos. */
     private static final String LEGACY_FORMAT_HEADER = "NATIONAL-ECONOMIC\t1";
 
+    /** Clientes indexados pelo CPF normalizado, preservando a ordem de cadastro. */
     private final Map<String, ClientAccount> clients = new LinkedHashMap<>();
+    /** Operações indexadas pelo identificador único da aplicação. */
     private final Map<String, List<FinancialOperation>> statements = new LinkedHashMap<>();
 
+    /** Cadastra um cliente validando CPF, duplicidade e limite do sistema. */
     public synchronized void registerClient(PersonalData personalData, int agencyNumber, long accountNumber) {
         Objects.requireNonNull(personalData, "Dados pessoais obrigatórios.");
         String cpf = canonicalCpf(personalData.getCpf());
@@ -50,6 +66,7 @@ public class InvestmentSystem {
         clients.put(cpf, new ClientAccount(personalData, agencyNumber, accountNumber));
     }
 
+    /** Associa uma aplicação a um cliente e cria seu extrato vazio. */
     public synchronized void registerInvestment(String cpf, Investment investment) {
         Objects.requireNonNull(investment, "Investimento obrigatório.");
         ClientAccount client = requireClient(cpf);
@@ -60,6 +77,7 @@ public class InvestmentSystem {
         statements.put(investment.getNumber(), new ArrayList<>());
     }
 
+    /** Valida e aplica uma operação à aplicação, registrando-a no extrato. */
     public synchronized void registerOperation(String cpf, String investmentNumber, FinancialOperation operation) {
         Objects.requireNonNull(operation, "Operação obrigatória.");
         Investment investment = requireClient(cpf).requireInvestment(investmentNumber);
@@ -67,18 +85,25 @@ public class InvestmentSystem {
         statements.computeIfAbsent(investmentNumber, ignored -> new ArrayList<>()).add(operation);
     }
 
+    /** Procura um cliente pelo CPF e retorna vazio se não existir. */
     public synchronized Optional<ClientAccount> findClient(String cpf) {
         return Optional.ofNullable(clients.get(canonicalCpf(cpf)));
     }
 
+    /** Retorna uma cópia não modificável da lista de clientes. */
     public synchronized List<ClientAccount> getClients() {
         return List.copyOf(clients.values());
     }
 
+    /** Retorna as aplicações do cliente; CPF inválido ou inexistente gera erro. */
     public synchronized List<Investment> getInvestments(String cpf) {
         return requireClient(cpf).getInvestments();
     }
 
+    /**
+     * Retorna o extrato inclusivo entre as duas datas, em ordem cronológica.
+     * O período deve ser válido e a aplicação deve pertencer ao cliente.
+     */
     public synchronized List<FinancialOperation> getStatement(String cpf, String investmentNumber,
                                                                  LocalDate start, LocalDate end) {
         Objects.requireNonNull(start, "Data inicial obrigatória.");
@@ -91,20 +116,27 @@ public class InvestmentSystem {
                 .toList();
     }
 
+    /** Retorna o saldo líquido de uma aplicação específica. */
     public synchronized BigDecimal getBalance(String cpf, String investmentNumber) {
         return requireClient(cpf).requireInvestment(investmentNumber).getNetBalance();
     }
 
+    /** Soma os saldos líquidos das aplicações pertencentes ao cliente. */
     public synchronized BigDecimal getClientBalance(String cpf) {
         return requireClient(cpf).getInvestments().stream()
                 .map(Investment::getNetBalance).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /** Soma os saldos líquidos de todas as aplicações cadastradas. */
     public synchronized BigDecimal getSystemBalance() {
         return clients.values().stream().flatMap(client -> client.getInvestments().stream())
                 .map(Investment::getNetBalance).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
+    /**
+     * Atualiza todas as aplicações em uma data útil. Fins de semana são
+     * ignorados, conforme a regra da atividade.
+     */
     public synchronized void updateAll(LocalDate date) {
         Objects.requireNonNull(date, "Data obrigatória.");
         if (date.getDayOfWeek().getValue() >= 6) return;
@@ -114,8 +146,9 @@ public class InvestmentSystem {
     }
 
     /**
-     * Persiste em TSV versionado, com escaping explícito e sem serialização Java.
-     * O arquivo contém os dados necessários à restauração e recebe permissão privada quando suportada.
+     * Grava clientes, aplicações e operações em TSV versionado, sem serialização
+     * Java. O arquivo temporário e a troca atômica reduzem o risco de deixar
+     * dados incompletos se a gravação for interrompida.
      */
     public synchronized void save(Path path) throws IOException {
         Objects.requireNonNull(path, "Caminho obrigatório.");
@@ -162,6 +195,12 @@ public class InvestmentSystem {
         }
     }
 
+    /**
+     * Reconstitui o sistema a partir dos formatos v1, v2 ou v3.
+     *
+     * @throws IOException se o arquivo não existir, estiver inconsistente ou
+     *                     usar uma versão desconhecida
+     */
     public static InvestmentSystem load(Path path) throws IOException {
         Objects.requireNonNull(path, "Caminho obrigatório.");
         InvestmentSystem system = new InvestmentSystem();
@@ -209,12 +248,17 @@ public class InvestmentSystem {
         return system;
     }
 
+    /** Interpreta um registro de cliente do arquivo e delega as regras ao cadastro. */
     private void readClient(List<String> f) {
         requireFieldCount(f, 6);
         PersonalData data = new PersonalData(f.get(2), f.get(1), f.get(3));
         registerClient(data, Integer.parseInt(f.get(4)), Long.parseLong(f.get(5)));
     }
 
+    /**
+     * Interpreta um registro de aplicação e escolhe os campos conforme a versão
+     * do arquivo, preenchendo defaults apenas para os formatos antigos.
+     */
     private Investment readInvestment(List<String> f, int formatVersion) {
         requireFieldCount(f, switch (formatVersion) {
             case 1 -> 15;
@@ -252,6 +296,7 @@ public class InvestmentSystem {
         return investment;
     }
 
+    /** Interpreta uma operação e verifica que cliente e aplicação correspondem. */
     private void readOperation(List<String> f, Map<String, Investment> investments) {
         requireFieldCount(f, 7);
         Investment investment = investments.get(f.get(2));
@@ -267,17 +312,20 @@ public class InvestmentSystem {
         operations.add(operation);
     }
 
+    /** Normaliza o CPF e exige que o cliente esteja cadastrado. */
     private synchronized ClientAccount requireClient(String cpf) {
         ClientAccount client = clients.get(canonicalCpf(cpf));
         if (client == null) throw new IllegalArgumentException("Cliente não encontrado.");
         return client;
     }
 
+    /** Busca um número de aplicação globalmente para impedir duplicidades. */
     private Optional<Investment> findInvestmentByNumber(String number) {
         return clients.values().stream().flatMap(c -> c.getInvestments().stream())
                 .filter(i -> i.getNumber().equals(number)).findFirst();
     }
 
+    /** Remove pontuação do CPF para usar uma chave estável nos mapas internos. */
     private static String canonicalCpf(String cpf) {
         if (cpf == null) throw new IllegalArgumentException("CPF obrigatório.");
         String digits = cpf.replaceAll("\\D", "");
@@ -285,6 +333,7 @@ public class InvestmentSystem {
         return digits;
     }
 
+    /** Escreve uma linha TSV escapando cada campo antes da separação por tabulação. */
     private static void writeRecord(BufferedWriter writer, String... fields) throws IOException {
         for (int i = 0; i < fields.length; i++) {
             if (i > 0) writer.write('\t');
@@ -293,10 +342,15 @@ public class InvestmentSystem {
         writer.newLine();
     }
 
+    /** Escapa caracteres de controle para manter cada registro em uma linha. */
     private static String escape(String value) {
         return value.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r");
     }
 
+    /**
+     * Decodifica um registro TSV respeitando os escapes usados por {@link #escape(String)}.
+     * Rejeita sequências desconhecidas e escapes truncados para detectar corrupção.
+     */
     private static List<String> parseRecord(String line) {
         List<String> fields = new ArrayList<>();
         StringBuilder field = new StringBuilder();
@@ -326,10 +380,12 @@ public class InvestmentSystem {
         return fields;
     }
 
+    /** Confere a forma do registro antes que os campos sejam interpretados. */
     private static void requireFieldCount(List<String> fields, int expected) {
         if (fields.size() != expected) throw new IllegalArgumentException("Quantidade de campos inválida.");
     }
 
+    /** Restringe leitura e escrita ao usuário atual em sistemas POSIX. */
     private static void setPrivatePermissions(Path path) {
         try {
             Set<PosixFilePermission> permissions = EnumSet.of(PosixFilePermission.OWNER_READ,

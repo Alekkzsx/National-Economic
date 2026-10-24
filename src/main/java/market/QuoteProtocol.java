@@ -14,13 +14,18 @@ import java.util.regex.Pattern;
  * sempre em uma única linha. Valores usam decimal simples, sem expoente.
  */
 final class QuoteProtocol {
+    /** Limita o tamanho da linha para evitar respostas ou comandos excessivos. */
     static final int MAX_LINE_BYTES = 512;
+    /** Ordem canônica das taxas transmitidas pelo servidor. */
     private static final String[] CURRENCIES = {"SELICRA", "CDIR", "USD", "EUR"};
+    /** Conjunto para validar nomes e detectar entradas desconhecidas. */
     private static final Set<String> CURRENCY_SET = Set.of(CURRENCIES);
+    /** Formato decimal aceito: sem expoentes, espaços ou separadores locais. */
     private static final Pattern DECIMAL = Pattern.compile("[+-]?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?");
 
     private QuoteProtocol() {}
 
+    /** Lê uma linha ASCII limitada; falha se a conexão terminar sem dados válidos. */
     static String readLine(InputStream input) throws IOException {
         byte[] bytes = new byte[MAX_LINE_BYTES];
         int length = 0;
@@ -48,6 +53,7 @@ final class QuoteProtocol {
         return new String(bytes, 0, length, java.nio.charset.StandardCharsets.US_ASCII);
     }
 
+    /** Valida campos, nomes, duplicidades e valores da resposta do servidor. */
     static Map<String, BigDecimal> parseQuotes(String response) throws IOException {
         if (response.startsWith("ERR|")) {
             throw new IOException("Servidor recusou a solicitação: " + response.substring(4));
@@ -81,6 +87,7 @@ final class QuoteProtocol {
         return Map.copyOf(quotes);
     }
 
+    /** Valida o conjunto de cotações fornecido antes de iniciar o servidor. */
     static Map<String, BigDecimal> validateQuotes(Map<String, BigDecimal> values) {
         if (values == null || values.size() != CURRENCIES.length
                 || !values.keySet().equals(CURRENCY_SET)) {
@@ -100,6 +107,7 @@ final class QuoteProtocol {
         return Map.copyOf(quotes);
     }
 
+    /** Serializa os valores usando a ordem canônica do protocolo. */
     static String formatQuotes(Map<String, BigDecimal> quotes) {
         StringBuilder response = new StringBuilder("OK");
         for (String currency : CURRENCIES) {

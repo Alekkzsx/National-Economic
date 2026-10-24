@@ -31,16 +31,21 @@ import java.util.function.Function;
  * e delega as regras de negócio ao InvestmentSystem.
  */
 public final class Main {
+    /** Arquivo padrão de persistência utilizado ao iniciar e encerrar o programa. */
     private static final Path DEFAULT_FILE = Path.of("data", "sgi.db");
 
+    /** Leitor único para que todas as rotinas compartilhem a mesma entrada do terminal. */
     private final Scanner scanner;
+    /** Serviço que mantém o estado carregado durante a execução da aplicação. */
     private InvestmentSystem system;
 
+    /** Monta a interface com os recursos de entrada e o estado inicial. */
     private Main(Scanner scanner, InvestmentSystem system) {
         this.scanner = scanner;
         this.system = system;
     }
 
+    /** Carrega os dados padrão e inicia o menu interativo. */
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
             InvestmentSystem investmentSystem = loadDefaultState(new InvestmentSystem());
@@ -48,6 +53,7 @@ public final class Main {
         }
     }
 
+    /** Abre o arquivo padrão, ou inicia vazio se ele ainda não existir. */
     private static InvestmentSystem loadDefaultState(InvestmentSystem fallback) {
         if (!Files.exists(DEFAULT_FILE)) {
             return fallback;
@@ -62,6 +68,7 @@ public final class Main {
         }
     }
 
+    /** Executa o menu até a saída ou o encerramento da entrada padrão. */
     private void run() {
         boolean running = true;
         while (running) {
@@ -97,6 +104,7 @@ public final class Main {
         System.out.println("SGI encerrado.");
     }
 
+    /** Exibe as operações disponíveis na interface de terminal. */
     private void printMenu() {
         System.out.println("""
 
@@ -119,6 +127,7 @@ public final class Main {
                 """);
     }
 
+    /** Solicita e cadastra dados pessoais e bancários de um cliente. */
     private void registerClient() {
         String name = readRequired("Nome completo: ");
         String cpf = readRequired("CPF (será ocultado nas listagens): ");
@@ -130,6 +139,7 @@ public final class Main {
         System.out.println("Cliente cadastrado com sucesso.");
     }
 
+    /** Lista os clientes sem expor o CPF completo. */
     private void listClients() {
         List<ClientAccount> clients = system.getClients();
         if (clients.isEmpty()) {
@@ -143,6 +153,7 @@ public final class Main {
         }
     }
 
+    /** Consulta os dados cadastrais e o saldo consolidado de um cliente. */
     private void consultClient() {
         String clientId = readRequired("CPF/identificador do cliente: ");
         Optional<ClientAccount> result = system.findClient(clientId);
@@ -159,6 +170,7 @@ public final class Main {
         System.out.println("Saldo total: " + money(system.getClientBalance(clientId)));
     }
 
+    /** Cadastra uma aplicação e permite escolher termos padrão ou personalizados. */
     private void registerInvestment() {
         String clientId = readRequired("CPF/identificador do cliente: ");
         String name = readRequired("Nome da aplicação: ");
@@ -180,6 +192,7 @@ public final class Main {
         System.out.println("Aplicação cadastrada com sucesso.");
     }
 
+    /** Lê prazos, periodicidade e tributos para personalizar uma aplicação. */
     private void configureInvestment(Investment investment) {
         int maturityDays = readInt("Dias até o vencimento (0 = sem vencimento): ", 0, Integer.MAX_VALUE);
         investment.setMaturityDays(maturityDays);
@@ -200,6 +213,7 @@ public final class Main {
         investment.setIrOption(readEnumChoice("Opção de IR", IrOption.values(), Main::irOptionLabel));
     }
 
+    /** Lê uma opção de enumeração por número ou por nome. */
     private <E extends Enum<E>> E readEnumChoice(String field, E[] choices, Function<E, String> label) {
         System.out.println(field + " — escolha pelo número ou nome:");
         for (int index = 0; index < choices.length; index++) {
@@ -227,6 +241,7 @@ public final class Main {
         }
     }
 
+    /** Remove acentos e pontuação para comparar opções digitadas com os rótulos. */
     private static String normalizeChoice(String value) {
         return Normalizer.normalize(value, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
@@ -235,6 +250,7 @@ public final class Main {
                 .toUpperCase();
     }
 
+    /** Retorna uma descrição amigável da periodicidade de rendimento. */
     private static String yieldPeriodLabel(YieldPeriod period) {
         return switch (period) {
             case DAILY -> "diário";
@@ -246,6 +262,7 @@ public final class Main {
         };
     }
 
+    /** Retorna uma descrição amigável da frequência de resgate. */
     private static String redemptionFrequencyLabel(RedemptionFrequency frequency) {
         return switch (frequency) {
             case DAILY -> "diária";
@@ -256,6 +273,7 @@ public final class Main {
         };
     }
 
+    /** Retorna a descrição da opção de IOF para o menu. */
     private static String iofOptionLabel(IofOption option) {
         return switch (option) {
             case EXEMPT -> "isento";
@@ -264,6 +282,7 @@ public final class Main {
         };
     }
 
+    /** Retorna a descrição da opção de IR para o menu. */
     private static String irOptionLabel(IrOption option) {
         return switch (option) {
             case EXEMPT -> "isento";
@@ -271,6 +290,7 @@ public final class Main {
         };
     }
 
+    /** Lista aplicações e seus valores principais para o cliente informado. */
     private void listInvestments() {
         String clientId = readRequired("CPF/identificador do cliente: ");
         List<Investment> investments = system.getInvestments(clientId);
@@ -286,6 +306,7 @@ public final class Main {
         }
     }
 
+    /** Registra um depósito ou resgate usando o tipo recebido como parâmetro. */
     private void launchOperation(OperationType type) {
         String clientId = readRequired("CPF/identificador do cliente: ");
         String investmentId = readRequired("Código da aplicação: ");
@@ -296,6 +317,7 @@ public final class Main {
         System.out.println((type == OperationType.DEPOSIT ? "Depósito" : "Retirada") + " lançado com sucesso.");
     }
 
+    /** Exibe operações em um intervalo informado ou nos últimos 30 dias. */
     private void showStatement() {
         String clientId = readRequired("CPF/identificador do cliente: ");
         String investmentId = readRequired("Código da aplicação: ");
@@ -324,6 +346,7 @@ public final class Main {
         }
     }
 
+    /** Consulta o saldo líquido da aplicação escolhida ou do cliente inteiro. */
     private void showClientBalance() {
         String clientId = readRequired("CPF/identificador do cliente: ");
         String investmentId = readLine("Código da aplicação (vazio para saldo total do cliente): ").trim();
@@ -333,10 +356,12 @@ public final class Main {
         System.out.println("Saldo: " + money(balance));
     }
 
+    /** Consulta o saldo líquido consolidado de todo o sistema. */
     private void showSystemBalance() {
         System.out.println("Saldo total do sistema: " + money(system.getSystemBalance()));
     }
 
+    /** Solicita uma data e delega ao serviço a atualização em dia útil. */
     private void updateInvestments() {
         LocalDate date = readDate("Data de atualização (AAAA-MM-DD): ");
         system.updateAll(date);
@@ -347,6 +372,7 @@ public final class Main {
         }
     }
 
+    /** Substitui o estado atual somente se o arquivo for carregado com sucesso. */
     private void loadState() {
         Path path = readPath("Caminho do arquivo para carregar: ");
         try {
@@ -358,11 +384,13 @@ public final class Main {
         }
     }
 
+    /** Solicita o caminho e salva uma cópia do estado atual. */
     private void saveState() {
         Path path = readPath("Caminho do arquivo para salvar: ");
         saveTo(path);
     }
 
+    /** Persiste automaticamente no caminho padrão antes de encerrar. */
     private void saveOnExit() {
         try {
             saveTo(DEFAULT_FILE);
@@ -371,6 +399,7 @@ public final class Main {
         }
     }
 
+    /** Cria a pasta necessária e exibe qualquer falha de gravação ao usuário. */
     private void saveTo(Path path) {
         try {
             Path parent = path.toAbsolutePath().getParent();
@@ -384,6 +413,7 @@ public final class Main {
         }
     }
 
+    /** Consulta as quatro cotações configuradas no servidor TCP informado. */
     private void showQuotes() {
         String host = readRequired("Servidor de cotações (host): ");
         int port = readInt("Porta: ", 1, 65535);
@@ -404,6 +434,7 @@ public final class Main {
         }
     }
 
+    /** Repete a leitura até receber uma resposta não vazia. */
     private String readRequired(String prompt) {
         while (true) {
             String value = readLine(prompt).trim();
@@ -414,6 +445,7 @@ public final class Main {
         }
     }
 
+    /** Lê um inteiro e valida simultaneamente formato e intervalo permitido. */
     private int readInt(String prompt, int min, int max) {
         while (true) {
             String input = readLine(prompt).trim();
@@ -429,6 +461,7 @@ public final class Main {
         }
     }
 
+    /** Lê um inteiro longo e valida formato e limites da conta bancária. */
     private long readLong(String prompt, long min, long max) {
         while (true) {
             String input = readLine(prompt).trim();
@@ -444,6 +477,7 @@ public final class Main {
         }
     }
 
+    /** Lê um valor monetário estritamente positivo. */
     private BigDecimal readPositiveAmount(String prompt) {
         while (true) {
             BigDecimal value = readDecimal(prompt);
@@ -454,6 +488,7 @@ public final class Main {
         }
     }
 
+    /** Lê taxa mensal fracionária entre zero e um. */
     private BigDecimal readMonthlyRate() {
         while (true) {
             BigDecimal value = readDecimal("Taxa mensal entre 0 e 1 (ex.: 0,05 para 5%): ");
@@ -464,6 +499,7 @@ public final class Main {
         }
     }
 
+    /** Aceita vírgula ou ponto como separador decimal. */
     private BigDecimal readDecimal(String prompt) {
         while (true) {
             String input = readLine(prompt).trim().replace(',', '.');
@@ -475,6 +511,7 @@ public final class Main {
         }
     }
 
+    /** Lê uma data ISO (AAAA-MM-DD), repetindo a solicitação em caso de erro. */
     private LocalDate readDate(String prompt) {
         while (true) {
             String input = readLine(prompt).trim();
@@ -486,6 +523,7 @@ public final class Main {
         }
     }
 
+    /** Interpreta respostas afirmativas e negativas em português. */
     private boolean readYesNo(String prompt) {
         while (true) {
             String answer = readLine(prompt).trim().toLowerCase();
@@ -499,10 +537,12 @@ public final class Main {
         }
     }
 
+    /** Lê um caminho local digitado pelo usuário. */
     private Path readPath(String prompt) {
         return Path.of(readRequired(prompt));
     }
 
+    /** Lê uma linha do terminal e sinaliza quando a entrada foi encerrada. */
     private String readLine(String prompt) {
         System.out.print(prompt);
         if (!scanner.hasNextLine()) {
@@ -511,6 +551,7 @@ public final class Main {
         return scanner.nextLine();
     }
 
+    /** Mascara documentos para evitar expor o CPF inteiro na tela. */
     private static String maskCpf(Object value) {
         String cpf = value == null ? "" : value.toString();
         String digits = cpf.replaceAll("\\D", "");
@@ -523,15 +564,17 @@ public final class Main {
         return "*".repeat(cpf.length() - 4) + cpf.substring(cpf.length() - 4);
     }
 
+    /** Formata valores monetários com duas casas decimais e rótulo em reais. */
     private static String money(BigDecimal value) {
         return value == null ? "não disponível" : "R$ " + value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
+    /** Garante mensagem útil mesmo quando uma exceção não contém detalhes. */
     private static String messageOf(Throwable throwable) {
         String message = throwable == null ? null : throwable.getMessage();
         return message == null || message.isBlank() ? "erro sem detalhes" : message;
     }
 
-    private static final class EndOfInputException extends RuntimeException {
-    }
+    /** Sinaliza que o terminal foi fechado, encerrando o menu sem erro de negócio. */
+    private static final class EndOfInputException extends RuntimeException { }
 }

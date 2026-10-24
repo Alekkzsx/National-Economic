@@ -14,17 +14,31 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-/** Servidor TCP concorrente que publica um conjunto estático de cotações configurado na inicialização. */
+/**
+ * Servidor TCP concorrente que publica cotações definidas na inicialização.
+ *
+ * <p>O protocolo aceita somente {@code GET_QUOTES}; conexões de clientes são
+ * processadas em um pool limitado e expiram após um período sem atividade.</p>
+ */
 public final class MarketServer implements AutoCloseable {
+    /** Tempo máximo sem atividade de cada cliente conectado. */
     private static final int CLIENT_TIMEOUT_MILLIS = 5_000;
+    /** Número limitado de conexões tratadas simultaneamente. */
     private static final int WORKER_COUNT = Math.max(2, Math.min(16, Runtime.getRuntime().availableProcessors()));
+    /** Limite da fila de conexões aguardando processamento. */
     private static final int MAX_QUEUED_CLIENTS = 64;
 
+    /** Socket de escuta mantido durante a vida do servidor. */
     private final ServerSocket serverSocket;
+    /** Snapshot imutável das cotações que serão respondidas. */
     private final Map<String, BigDecimal> quotes;
+    /** Pool limitado para evitar criar threads sem limite por conexão. */
     private final ThreadPoolExecutor workers;
+    /** Conexões ativas, fechadas durante o encerramento do servidor. */
     private final Set<Socket> clientSockets = ConcurrentHashMap.newKeySet();
+    /** Sinaliza tanto o laço de aceitação quanto os trabalhadores para encerrar. */
     private volatile boolean closed;
+    /** Thread dedicada à aceitação de novas conexões. */
     private Thread acceptThread;
 
     /**
@@ -48,12 +62,13 @@ public final class MarketServer implements AutoCloseable {
                 new ThreadPoolExecutor.AbortPolicy());
     }
 
+    /** Sobrecarga que recebe cada taxa como argumento individual. */
     public MarketServer(int port, BigDecimal selicra, BigDecimal cdir,
                         BigDecimal usd, BigDecimal eur) throws IOException {
         this(port, quoteMap(selicra, cdir, usd, eur));
     }
 
-    /** Inicia o laço de aceitação em uma thread dedicada; pode ser chamado apenas uma vez. */
+    /** Inicia o laço de aceitação em uma thread dedicada; só pode ser chamado uma vez. */
     public synchronized void start() {
         if (closed) {
             throw new IllegalStateException("O servidor já foi fechado.");
@@ -66,10 +81,12 @@ public final class MarketServer implements AutoCloseable {
         acceptThread.start();
     }
 
+    /** Retorna a porta efetiva, inclusive quando o servidor foi criado com porta zero. */
     public int getPort() {
         return serverSocket.getLocalPort();
     }
 
+    /** Aceita conexões até o fechamento e delega cada cliente ao pool. */
     private void acceptClients() {
         while (!closed) {
             try {
@@ -78,6 +95,7 @@ public final class MarketServer implements AutoCloseable {
                 try {
                     workers.execute(() -> handleClient(client));
                 } catch (RuntimeException rejected) {
+                    // Pool cheio ou encerrado: fecha o socket em vez de acumular conexões.
                     clientSockets.remove(client);
                     closeQuietly(client);
                 }
@@ -94,10 +112,12 @@ public final class MarketServer implements AutoCloseable {
         }
     }
 
+    /** Lê uma única solicitação, responde pelo protocolo e fecha a conexão. */
     private void handleClient(Socket client) {
         try (client) {
             client.setSoTimeout(CLIENT_TIMEOUT_MILLIS);
             String request = QuoteProtocol.readLine(client.getInputStream());
+            // Nunca encaminha comandos recebidos para execução genérica no servidor.
             String response = "GET_QUOTES".equals(request)
                     ? QuoteProtocol.formatQuotes(quotes)
                     : "ERR|INVALID_REQUEST";
@@ -116,6 +136,7 @@ public final class MarketServer implements AutoCloseable {
         }
     }
 
+    /** Fecha uma conexão durante o encerramento sem interromper os demais clientes. */
     private static void closeQuietly(Socket socket) {
         try {
             socket.close();
@@ -124,6 +145,7 @@ public final class MarketServer implements AutoCloseable {
         }
     }
 
+    /** Constrói o mapa canônico de cotações na mesma ordem do protocolo. */
     private static Map<String, BigDecimal> quoteMap(BigDecimal selicra, BigDecimal cdir,
                                                      BigDecimal usd, BigDecimal eur) {
         Map<String, BigDecimal> values = new LinkedHashMap<>();
@@ -134,6 +156,10 @@ public final class MarketServer implements AutoCloseable {
         return values;
     }
 
+    /**
+     * Fecha sockets e aguarda o encerramento do aceitador e do pool de clientes.
+     * A operação é idempotente; falhas de encerramento são propagadas ao chamador.
+     */
     @Override
     public synchronized void close() throws IOException {
         if (closed) {

@@ -16,11 +16,19 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Testes executáveis sem dependência externa: javac + java com assertions habilitadas. */
+/**
+ * Testes de integração executáveis sem biblioteca externa.
+ *
+ * <p>Compile o código principal junto com este arquivo e rode com
+ * {@code java -ea}; cada {@code check} transforma uma regressão em falha.</p>
+ */
 public final class InvestmentSystemSelfTest {
+    /** Impede a instanciação da classe de teste executável. */
     private InvestmentSystemSelfTest() { }
 
+    /** Executa as verificações de domínio, cálculo, extrato e persistência. */
     public static void main(String[] args) throws Exception {
+        // Confere o calendário didático e a validação de datas civis.
         CalendarDate calendarDate = new CalendarDate(24, 10, 2026);
         check(calendarDate.dayOfWeek() == 0, "data sábado por extenso numérico");
         check(calendarDate.dayOfWeekName().equals("sábado"), "nome do dia em pt-BR");
@@ -33,6 +41,7 @@ public final class InvestmentSystemSelfTest {
                 && calendarDate.getYear() == 2026 && calendarDate.toString().contains("segunda-feira"),
                 "cadastro e getters de data");
 
+        // Verifica sobrecargas e validações das classes com cadastro mutável.
         PersonalData alternateData = new PersonalData("Pessoa", "52998224725");
         check(alternateData.getMobile().isEmpty(), "overload de cadastro sem celular");
         alternateData.alterarDados("Pessoa Atualizada", "(11) 98765-4321");
@@ -52,11 +61,13 @@ public final class InvestmentSystemSelfTest {
                 "operação extensível, accessors compatíveis e cadastro sobrecarregado");
         expectRejected(() -> mutableOperation.setAmount(BigDecimal.ZERO), "valor inválido da operação");
 
+        // CPF é validado, mas não deve ser exposto integralmente na representação.
         PersonalData person = new PersonalData("Ana Silva", "529.982.247-25", "(11) 98765-4321");
         check(!person.toString().contains("52998224725"), "CPF completo não pode aparecer no toString");
         check(Investment.calendarDayIndex(LocalDate.of(2026, 10, 24)) == 0, "sábado deve mapear para zero");
         check(Investment.calendarDayIndex(LocalDate.of(2026, 10, 25)) == 1, "domingo deve mapear para um");
 
+        // Configura uma aplicação com termos não padrão e testa o fluxo de operações.
         InvestmentSystem system = new InvestmentSystem();
         system.registerClient(person, 12, 3456);
         Investment investment = new Investment("Reserva", "INV-1", new BigDecimal("100.00"),
@@ -78,6 +89,7 @@ public final class InvestmentSystemSelfTest {
         check(system.getStatement(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
                 LocalDate.of(2026, 1, 2)).size() == 1, "extrato inclusivo");
 
+        // Salva e restaura todos os dados, inclusive o estado do ciclo de rendimento.
         Path file = Path.of(".investment-system-self-test.tsv");
         try {
             system.save(file);
@@ -109,6 +121,7 @@ public final class InvestmentSystemSelfTest {
             Files.deleteIfExists(file);
         }
 
+        // Rendimentos periódicos ficam pendentes até o crédito configurado.
         Investment periodic = new Investment("Mensal", "INV-MONTHLY", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         periodic.setYieldPeriod(YieldPeriod.MONTHLY_30_DAYS);
@@ -126,6 +139,7 @@ public final class InvestmentSystemSelfTest {
         daily.update(LocalDate.of(2026, 2, 2));
         check(daily.getCreditedBalance().compareTo(periodic.getCreditedBalance()) > 0,
                 "capitalização diária difere da mensal");
+        // A periodicidade de vencimento só credita o rendimento ao atingir o prazo.
         Investment atMaturity = new Investment("Vencimento", "INV-MATURITY", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         atMaturity.setMaturityDays(30);
@@ -138,6 +152,7 @@ public final class InvestmentSystemSelfTest {
                         && atMaturity.getCreditedBalance().compareTo(new BigDecimal("100000.00")) > 0,
                 "rendimento creditado ao atingir maturidade");
 
+        // Resgates respeitam carência, frequência e saldo disponível.
         Investment redemption = new Investment("Resgate", "INV-REDEEM", new BigDecimal("100.00"),
                 new BigDecimal("0"), LocalDate.of(2026, 1, 1));
         redemption.setMinimumStayDays(10);
@@ -162,6 +177,7 @@ public final class InvestmentSystemSelfTest {
         }
         check(insufficientFundsRejected, "saque sem saldo deve ser rejeitado");
 
+        // Exercita as duas opções de IOF e a progressão das faixas de IR.
         Investment taxed = new Investment("Tributável", "INV-TAX", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         taxed.setIrOption(IrOption.EXEMPT);
@@ -204,6 +220,7 @@ public final class InvestmentSystemSelfTest {
         bands.incrementarDia();
         check(bands.getIr().compareTo(new BigDecimal("15.00")) == 0, "IR 15% após 720 dias");
 
+        // Formatos antigos continuam legíveis e recebem defaults documentados.
         Path legacyFile = Path.of(".investment-system-v1-self-test.tsv");
         try {
             Files.write(legacyFile, List.of(
@@ -220,6 +237,7 @@ public final class InvestmentSystemSelfTest {
             Files.deleteIfExists(legacyFile);
         }
 
+        // O formato intermediário mantém termos, ainda que derive o contador pendente.
         Path version2File = Path.of(".investment-system-v2-self-test.tsv");
         try {
             Files.write(version2File, List.of(
@@ -236,10 +254,12 @@ public final class InvestmentSystemSelfTest {
         }
     }
 
+    /** Falha imediatamente com uma mensagem curta quando uma expectativa não se cumpre. */
     private static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
     }
 
+    /** Confirma que a ação fornecida rejeita dados inválidos com erro de validação. */
     private static void expectRejected(Runnable action, String message) {
         boolean rejected = false;
         try {
