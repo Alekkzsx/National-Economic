@@ -189,14 +189,14 @@ public class Investment {
         return switch (yieldPeriod) {
             case DAILY -> true;
             case MONTHLY_30_DAYS, QUARTERLY_90_DAYS, HALF_YEARLY_180_DAYS, YEARLY_365_DAYS ->
-                    applicationDays > 0 && applicationDays % yieldPeriod.days() == 0;
+                    elapsedDays > 0 && elapsedDays % yieldPeriod.days() == 0;
             case AT_MATURITY -> isMatured();
         };
     }
 
     private boolean isRedemptionDate() {
         int interval = redemptionFrequency.days();
-        return interval == 1 || (applicationDays > 0 && applicationDays % interval == 0);
+        return interval == 1 || (elapsedDays > 0 && elapsedDays % interval == 0);
     }
 
     /**
