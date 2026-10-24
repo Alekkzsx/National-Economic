@@ -92,7 +92,7 @@ public class Investment {
     public void setInitialAmount(BigDecimal amount) {
         BigDecimal value = positiveMoney(amount, "Valor inicial");
         if (balance != null) {
-            if (operationCount > 0 || accruedEarnings.signum() > 0) {
+            if (operationCount > 0 || accruedEarnings.signum() > 0 || pendingEarnings.signum() > 0) {
                 throw new IllegalStateException("Não é possível alterar o aporte inicial após movimentação ou rendimento.");
             }
             balance = balance.add(value.subtract(initialAmount));
