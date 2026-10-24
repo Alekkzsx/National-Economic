@@ -231,7 +231,11 @@ public final class Main {
     private void updateInvestments() {
         LocalDate date = readDate("Data de atualização (AAAA-MM-DD): ");
         system.updateAll(date);
-        System.out.println("Aplicações atualizadas com sucesso.");
+        if (date.getDayOfWeek().getValue() >= 6) {
+            System.out.println("A data informada é fim de semana; o serviço não processou a atualização.");
+        } else {
+            System.out.println("Aplicações atualizadas com sucesso.");
+        }
     }
 
     private void loadState() {
