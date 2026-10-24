@@ -5,6 +5,7 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
 public class Investment {
@@ -18,6 +19,7 @@ public class Investment {
     private BigDecimal balance;
     private BigDecimal monthlyRate;
     private BigDecimal accruedEarnings = BigDecimal.ZERO.setScale(MONEY_SCALE);
+    private BigDecimal pendingEarnings = BigDecimal.ZERO.setScale(MONEY_SCALE);
     private DayCountConvention dayCountConvention = DayCountConvention.THIRTY_360;
     private TaxRegime taxRegime = TaxRegime.STANDARD;
     private YieldPeriod yieldPeriod = YieldPeriod.DAILY;
@@ -30,6 +32,7 @@ public class Investment {
     private LocalDate lastUpdateDate;
     private int elapsedDays;
     private int applicationDays;
+    private int daysSinceYield;
     private int operationCount;
 
     public Investment(String name, String number, BigDecimal initialAmount, BigDecimal monthlyRate) {
@@ -50,17 +53,21 @@ public class Investment {
     public String getNumber() { return number; }
     public BigDecimal getInitialAmount() { return initialAmount; }
     public BigDecimal getMonthlyRate() { return monthlyRate; }
-    public BigDecimal getBalance() { return balance; }
-    public BigDecimal getGrossBalance() { return balance; }
-    public BigDecimal getNetBalance() { return balance.subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
-    public BigDecimal getGrossEarnings() { return accruedEarnings; }
-    public BigDecimal getNetEarnings() { return accruedEarnings.subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
-    public BigDecimal getIof() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : accruedEarnings.multiply(iofRate()).setScale(2, RoundingMode.HALF_UP); }
-    public BigDecimal getIr() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : accruedEarnings.subtract(getIof()).multiply(irRate()).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getBalance() { return getGrossBalance(); }
+    public BigDecimal getCreditedBalance() { return balance; }
+    public BigDecimal getGrossBalance() { return balance.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP); }
+    public BigDecimal getNetBalance() { return getGrossBalance().subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getGrossEarnings() { return accruedEarnings.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP); }
+    public BigDecimal getCreditedEarnings() { return accruedEarnings; }
+    public BigDecimal getNetEarnings() { return getGrossEarnings().subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getIof() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : getGrossEarnings().multiply(iofRate()).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getIr() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : getGrossEarnings().subtract(getIof()).multiply(irRate()).setScale(2, RoundingMode.HALF_UP); }
     public BigDecimal getTaxes() { return getIof().add(getIr()).setScale(2, RoundingMode.HALF_UP); }
     public int getElapsedDays() { return elapsedDays; }
     public int getApplicationDays() { return applicationDays; }
     public int getOperationCount() { return operationCount; }
+    public BigDecimal getPendingEarnings() { return pendingEarnings; }
+    public int getDaysSinceYield() { return daysSinceYield; }
     public LocalDate getApplicationDate() { return applicationDate; }
     public LocalDate getLastUpdateDate() { return lastUpdateDate; }
     public DayCountConvention getDayCountConvention() { return dayCountConvention; }
@@ -169,7 +176,10 @@ public class Investment {
     }
 
     /** Acrescenta um dia corrido ao contador do investimento. */
-    public void incrementarDia() { elapsedDays++; }
+    public void incrementarDia() {
+        elapsedDays++;
+        daysSinceYield++;
+    }
 
     /** Acrescenta um dia de aplicação; usado apenas para dias úteis. */
     public void incrementarDiaAplicacao() { applicationDays++; }
@@ -186,14 +196,29 @@ public class Investment {
         return elapsedDays >= minimumStayDays && isRedemptionDate();
     }
 
-    /** Indica quando o rendimento configurado vence; a capitalização financeira permanece diária. */
+    /** Indica quando o rendimento acumulado é creditado e passa a compor o saldo. */
     public boolean isYieldDate() {
         return switch (yieldPeriod) {
-            case DAILY -> true;
+            case DAILY -> daysSinceYield >= 1;
             case MONTHLY_30_DAYS, QUARTERLY_90_DAYS, HALF_YEARLY_180_DAYS, YEARLY_365_DAYS ->
-                    elapsedDays > 0 && elapsedDays % yieldPeriod.days() == 0;
+                    daysSinceYield >= yieldPeriod.days();
             case AT_MATURITY -> isMatured();
         };
+    }
+
+    private boolean isYieldDue() {
+        return yieldPeriod == YieldPeriod.AT_MATURITY ? isMatured() : isYieldDate();
+    }
+
+    private void creditPendingEarnings() {
+        if (pendingEarnings.signum() > 0) {
+            balance = balance.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+            accruedEarnings = accruedEarnings.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+            pendingEarnings = moneyZero();
+        }
+        if (yieldPeriod != YieldPeriod.AT_MATURITY) {
+            daysSinceYield %= yieldPeriod.days();
+        }
     }
 
     private boolean isRedemptionDate() {
@@ -201,9 +226,15 @@ public class Investment {
         return interval == 1 || (elapsedDays > 0 && elapsedDays % interval == 0);
     }
 
+    private boolean canRedeemOn(LocalDate date) {
+        long days = ChronoUnit.DAYS.between(applicationDate, date);
+        int interval = redemptionFrequency.days();
+        return days >= minimumStayDays && (interval == 1 || (days > 0 && days % interval == 0));
+    }
+
     /**
-     * Processa o dia informado. A taxa mensal é nominal sobre base 30/360:
-     * taxa diária = taxa mensal / 30, capitalizada diariamente em dias úteis.
+     * Processa dias corridos e acumula juros em dias úteis. O rendimento pendente
+     * só é incorporado ao saldo conforme a periodicidade de crédito configurada.
      */
     public void update(LocalDate date) {
         Objects.requireNonNull(date, "Data obrigatória.");
@@ -216,7 +247,10 @@ public class Investment {
             incrementarDia();
             if (isBusinessDay(day)) {
                 incrementarDiaAplicacao();
-                if (!day.isBefore(applicationDate)) accrueOneBusinessDay();
+                if (!day.isBefore(applicationDate)) {
+                    if (maturityDays == 0 || elapsedDays <= maturityDays) accrueOneBusinessDay();
+                    if (isYieldDue()) creditPendingEarnings();
+                }
             }
             day = day.plusDays(1);
         }
@@ -231,6 +265,9 @@ public class Investment {
         if (operation.type() == OperationType.DEPOSIT) {
             balance = balance.add(amount).setScale(2, RoundingMode.HALF_UP);
         } else {
+            if (!canRedeemOn(operation.date())) {
+                throw new IllegalArgumentException("Resgate fora da carência ou da frequência permitida.");
+            }
             if (amount.compareTo(balance) > 0) throw new IllegalArgumentException("Saldo insuficiente.");
             balance = balance.subtract(amount).setScale(2, RoundingMode.HALF_UP);
         }
@@ -247,16 +284,30 @@ public class Investment {
                              int elapsedDays, int applicationDays, int operationCount, YieldPeriod yieldPeriod,
                              int maturityDays, int minimumStayDays, RedemptionFrequency redemptionFrequency,
                              IofOption iofOption, IrOption irOption) {
+        restoreState(balance, accruedEarnings, lastUpdateDate, elapsedDays, applicationDays, operationCount,
+                yieldPeriod, maturityDays, minimumStayDays, redemptionFrequency, iofOption, irOption,
+                BigDecimal.ZERO, elapsedDays % (yieldPeriod == YieldPeriod.AT_MATURITY
+                        ? Math.max(1, elapsedDays + 1) : Math.max(1, yieldPeriod.days())));
+    }
+
+    public void restoreState(BigDecimal balance, BigDecimal accruedEarnings, LocalDate lastUpdateDate,
+                             int elapsedDays, int applicationDays, int operationCount, YieldPeriod yieldPeriod,
+                             int maturityDays, int minimumStayDays, RedemptionFrequency redemptionFrequency,
+                             IofOption iofOption, IrOption irOption, BigDecimal pendingEarnings,
+                             int daysSinceYield) {
         this.balance = nonNegativeMoney(balance, "Saldo");
         this.accruedEarnings = nonNegativeMoney(accruedEarnings, "Rendimento");
+        this.pendingEarnings = nonNegativeMoney(pendingEarnings, "Rendimento pendente");
         this.lastUpdateDate = Objects.requireNonNull(lastUpdateDate, "Data de atualização obrigatória.");
         if (lastUpdateDate.isBefore(applicationDate)) throw new IllegalArgumentException("Atualização anterior à aplicação.");
-        if (elapsedDays < 0 || applicationDays < 0 || operationCount < 0 || operationCount > 100) {
+        if (elapsedDays < 0 || applicationDays < 0 || operationCount < 0 || operationCount > 100
+                || daysSinceYield < 0) {
             throw new IllegalArgumentException("Contadores inválidos.");
         }
         this.elapsedDays = elapsedDays;
         this.applicationDays = applicationDays;
         this.operationCount = operationCount;
+        this.daysSinceYield = daysSinceYield;
         this.maturityDays = 0;
         this.minimumStayDays = 0;
         this.yieldPeriod = YieldPeriod.DAILY;
@@ -269,6 +320,9 @@ public class Investment {
         setRedemptionFrequency(redemptionFrequency);
         setIofOption(iofOption);
         setIrOption(irOption);
+        if (this.yieldPeriod != YieldPeriod.AT_MATURITY && this.daysSinceYield >= this.yieldPeriod.days()) {
+            throw new IllegalArgumentException("Contador de periodicidade inválido.");
+        }
     }
 
     public boolean isBusinessDay(LocalDate date) {
@@ -295,8 +349,7 @@ public class Investment {
                 BigDecimal.valueOf(dayCountConvention.daysPerYear()), RATE_CONTEXT);
         BigDecimal earnings = balance.multiply(dailyRate, RATE_CONTEXT).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         if (earnings.signum() > 0) {
-            balance = balance.add(earnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-            accruedEarnings = accruedEarnings.add(earnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+            pendingEarnings = pendingEarnings.add(earnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         }
     }
 
