@@ -1,0 +1,4 @@
+out/
+target/
+data/
+*.class
