@@ -11,8 +11,6 @@ import java.util.Objects;
 public class Investment {
     private static final int MONEY_SCALE = 2;
     private static final MathContext RATE_CONTEXT = MathContext.DECIMAL128;
-    private static final BigDecimal THIRTY = BigDecimal.valueOf(30);
-
     private String name;
     private String number;
     private BigDecimal initialAmount;
