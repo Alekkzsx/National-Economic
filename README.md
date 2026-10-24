@@ -9,7 +9,8 @@ SELICRA, CDIR, dólar e euro.
 - JDK 21 ou superior (`java` e `javac` no `PATH`)
 - Terminal compatível com comandos Unix para os exemplos abaixo
 
-O projeto não depende de bibliotecas externas nem de um gerenciador de build.
+O código principal não depende de bibliotecas externas nem de um gerenciador de
+build. O JDK é suficiente para compilar e executar a aplicação.
 
 ## Compilar
 
@@ -35,12 +36,31 @@ o programa estiver em execução.
 Em outro terminal, execute:
 
 ```sh
-java -cp out br.com.nationaleconomic.market.MarketServerMain
+java -cp out br.com.nationaleconomic.market.MarketServerMain 5050 10.50 1.25 5.10 5.55
 ```
 
-O protocolo TCP e os argumentos/configuração de valores são descritos na
-mensagem de inicialização do servidor. As cotações são configuradas localmente;
-não são cotações financeiras em tempo real.
+Argumentos: `porta SELICRA CDIR USD EUR`. Sem argumentos, a porta padrão é
+5050 e os valores padrão são `0.00`. As cotações são configuradas localmente;
+não são cotações financeiras em tempo real. O cliente envia `GET_QUOTES` e
+recebe uma resposta em uma linha com `SELICRA`, `CDIR`, `USD` e `EUR`.
+
+No cadastro de uma aplicação, escolha os termos padrão ou configure
+periodicidade de rendimento, vencimento, permanência mínima, frequência de
+resgate e opções de IOF/IR. Valores monetários usam ponto ou vírgula como
+separador decimal.
+
+## Teste autônomo
+
+O teste do domínio não exige JUnit:
+
+```sh
+javac -encoding UTF-8 -d out $(find src/main/java -name '*.java') \
+  src/test/java/br/com/nationaleconomic/InvestmentSystemSelfTest.java
+java -ea -cp out br.com.nationaleconomic.InvestmentSystemSelfTest
+```
+
+O teste de protocolo em `src/test/java` usa JUnit 5; este repositório não inclui
+um gerenciador de build nem as dependências de teste.
 
 ## Organização
 
