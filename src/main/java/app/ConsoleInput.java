@@ -169,6 +169,8 @@ final class ConsoleInput {
 
     /** Indica que a entrada padrão foi fechada. */
     static final class EndOfInputException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
         private EndOfInputException() { }
     }
 }
