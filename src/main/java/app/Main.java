@@ -31,32 +31,34 @@ public final class Main {
 
     private final ConsoleInput input;
     private InvestmentSystem system;
+    private boolean saveDefaultOnExit;
 
-    private Main(ConsoleInput input, InvestmentSystem system) {
+    private Main(ConsoleInput input, InvestmentSystem system, boolean saveDefaultOnExit) {
         this.input = input;
         this.system = system;
+        this.saveDefaultOnExit = saveDefaultOnExit;
     }
 
     /** Carrega o estado padrão e inicia a interface interativa. */
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
-            InvestmentSystem initialState = loadDefaultState(new InvestmentSystem());
-            new Main(new ConsoleInput(scanner), initialState).run();
+            InitialState initialState = loadDefaultState();
+            new Main(new ConsoleInput(scanner), initialState.system(), initialState.saveDefaultOnExit()).run();
         }
     }
 
-    /** Usa o arquivo padrão quando disponível; em caso de falha, inicia vazio. */
-    private static InvestmentSystem loadDefaultState(InvestmentSystem fallback) {
+    /** Usa o arquivo padrão quando disponível e protege dados que não puderam ser lidos. */
+    private static InitialState loadDefaultState() {
         if (!Files.exists(DEFAULT_FILE)) {
-            return fallback;
+            return new InitialState(new InvestmentSystem(), true);
         }
         try {
             System.out.println("Carregando estado de " + DEFAULT_FILE + "...");
-            return InvestmentSystem.load(DEFAULT_FILE);
+            return new InitialState(InvestmentSystem.load(DEFAULT_FILE), true);
         } catch (IOException | RuntimeException e) {
             System.out.println("Não foi possível carregar " + DEFAULT_FILE + ": " + CliFormat.messageOf(e));
-            System.out.println("O sistema será iniciado sem os dados desse arquivo.");
-            return fallback;
+            System.out.println("O sistema será iniciado vazio; o arquivo original será preservado.");
+            return new InitialState(new InvestmentSystem(), false);
         }
     }
 
@@ -91,7 +93,11 @@ public final class Main {
                 System.out.println("Não foi possível concluir a operação: " + CliFormat.messageOf(e));
             }
         }
-        saveTo(DEFAULT_FILE);
+        if (saveDefaultOnExit) {
+            saveTo(DEFAULT_FILE);
+        } else {
+            System.out.println("Salvamento automático ignorado para preservar o arquivo padrão.");
+        }
         System.out.println("SGI encerrado.");
     }
 
@@ -286,16 +292,21 @@ public final class Main {
     }
 
     /** Cria a pasta pai necessária e informa qualquer falha de persistência. */
-    private void saveTo(Path path) {
+    private boolean saveTo(Path path) {
         try {
             Path parent = path.toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
             system.save(path);
+            if (path.toAbsolutePath().normalize().equals(DEFAULT_FILE.toAbsolutePath().normalize())) {
+                saveDefaultOnExit = true;
+            }
             System.out.println("Estado salvo com sucesso em " + path + ".");
+            return true;
         } catch (IOException | RuntimeException e) {
             System.out.println("Falha ao salvar " + path + ": " + CliFormat.messageOf(e));
+            return false;
         }
     }
 
@@ -317,4 +328,6 @@ public final class Main {
             System.out.println("Falha ao consultar o servidor de cotações: " + CliFormat.messageOf(e));
         }
     }
+
+    private record InitialState(InvestmentSystem system, boolean saveDefaultOnExit) { }
 }
