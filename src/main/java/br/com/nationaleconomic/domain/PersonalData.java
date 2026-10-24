@@ -2,15 +2,17 @@ package br.com.nationaleconomic.domain;
 
 import java.util.Objects;
 
-public final class PersonalData {
+public class PersonalData {
     private String name;
     private String cpf;
     private String mobile;
 
     public PersonalData(String name, String cpf, String mobile) {
-        setName(name);
-        setCpf(cpf);
-        setMobile(mobile);
+        setCadastro(name, cpf, mobile);
+    }
+
+    public PersonalData(String name, String cpf) {
+        setCadastro(name, cpf);
     }
 
     public String name() { return name; }
@@ -21,16 +23,11 @@ public final class PersonalData {
     public String getMobile() { return mobile; }
 
     public void setName(String name) {
-        if (name == null || name.isBlank()) throw new IllegalArgumentException("Nome obrigatório.");
-        this.name = name.trim();
+        this.name = validateName(name);
     }
 
     public void setCpf(String cpf) {
-        String digits = digitsOnly(cpf);
-        if (!isValidCpf(digits)) {
-            throw new IllegalArgumentException("CPF deve conter 11 dígitos válidos.");
-        }
-        this.cpf = digits;
+        this.cpf = validateCpf(cpf);
     }
 
     private static boolean isValidCpf(String cpf) {
@@ -48,11 +45,55 @@ public final class PersonalData {
     }
 
     public void setMobile(String mobile) {
+        this.mobile = validateMobile(mobile);
+    }
+
+    public void setCadastro(String name, String cpf, String mobile) {
+        String validName = validateName(name);
+        String validCpf = validateCpf(cpf);
+        String validMobile = validateMobile(mobile);
+        this.name = validName;
+        this.cpf = validCpf;
+        this.mobile = validMobile;
+    }
+
+    /** Sobrecarrega o cadastro para dados pessoais sem celular informado. */
+    public void setCadastro(String name, String cpf) {
+        String validName = validateName(name);
+        String validCpf = validateCpf(cpf);
+        this.name = validName;
+        this.cpf = validCpf;
+        this.mobile = "";
+    }
+
+    public void alterarDados(String name, String cpf, String mobile) {
+        setCadastro(name, cpf, mobile);
+    }
+
+    public void alterarDados(String name, String mobile) {
+        String validName = validateName(name);
+        String validMobile = validateMobile(mobile);
+        this.name = validName;
+        this.mobile = validMobile;
+    }
+
+    private static String validateName(String name) {
+        if (name == null || name.isBlank()) throw new IllegalArgumentException("Nome obrigatório.");
+        return name.trim();
+    }
+
+    private static String validateCpf(String cpf) {
+        String digits = digitsOnly(cpf);
+        if (!isValidCpf(digits)) throw new IllegalArgumentException("CPF deve conter 11 dígitos válidos.");
+        return digits;
+    }
+
+    private static String validateMobile(String mobile) {
         String digits = digitsOnly(mobile);
         if (digits.length() < 10 || digits.length() > 13) {
             throw new IllegalArgumentException("Celular deve conter de 10 a 13 dígitos.");
         }
-        this.mobile = digits;
+        return digits;
     }
 
     private static String digitsOnly(String value) {
