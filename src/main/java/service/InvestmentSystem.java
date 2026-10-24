@@ -153,6 +153,9 @@ public class InvestmentSystem {
         if (operations == null) {
             throw new IllegalArgumentException("Extrato da aplicação não foi inicializado.");
         }
+        if (operation.date().isBefore(investment.getApplicationDate())) {
+            throw new IllegalArgumentException("Operação anterior à aplicação.");
+        }
         if (operations.size() >= 100) {
             throw new IllegalArgumentException("Mais de 100 operações persistidas.");
         }
