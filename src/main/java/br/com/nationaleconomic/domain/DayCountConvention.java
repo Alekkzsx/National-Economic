@@ -2,7 +2,7 @@ package br.com.nationaleconomic.domain;
 
 /** Convenções para converter a taxa mensal em taxa diária. */
 public enum DayCountConvention {
-    THIRTY_360(30),
+    THIRTY_360(360),
     ACTUAL_365(365),
     ACTUAL_360(360);
 
