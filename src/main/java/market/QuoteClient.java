@@ -1,28 +1,20 @@
 package market;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-/**
- * Cliente síncrono para o serviço TCP de cotações.
- *
- * <p>Cada consulta abre uma conexão curta, envia o comando permitido e valida
- * a resposta completa antes de devolvê-la ao chamador.</p>
- */
+/** Cliente síncrono: abre uma conexão por consulta e valida a resposta recebida. */
 public final class QuoteClient {
-    /** Limite para estabelecimento e leitura da conexão. */
     private static final int TIMEOUT_MILLIS = 5_000;
-    /** Nome de host ou endereço do servidor de cotações. */
+
     private final String host;
-    /** Porta TCP do servidor. */
     private final int port;
 
-    /** Cria um cliente após validar host e porta. */
+    /** Cria o cliente após validar o endereço do servidor. */
     public QuoteClient(String host, int port) {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("O host não pode ser vazio.");
@@ -35,18 +27,17 @@ public final class QuoteClient {
     }
 
     /**
-     * Consulta as quatro taxas configuradas no servidor.
+     * Envia o único comando suportado e retorna as quatro cotações.
      *
-     * @throws IOException em falha de rede, resposta incompleta ou protocolo inválido
+     * @throws IOException em falha de rede, timeout ou resposta inválida
      */
     public Map<String, BigDecimal> getQuotes() throws IOException {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(host, port), TIMEOUT_MILLIS);
             socket.setSoTimeout(TIMEOUT_MILLIS);
-            OutputStream output = socket.getOutputStream();
-            // O protocolo é uma única linha ASCII, seguida por quebra de linha.
-            output.write("GET_QUOTES\n".getBytes(StandardCharsets.US_ASCII));
-            output.flush();
+            socket.getOutputStream().write(
+                    (QuoteProtocol.REQUEST + "\n").getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
             return QuoteProtocol.parseQuotes(QuoteProtocol.readLine(socket.getInputStream()));
         }
     }
