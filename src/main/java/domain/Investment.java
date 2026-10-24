@@ -68,11 +68,12 @@ public class Investment {
     /** Cria uma aplicação com a data inicial informada pelo chamador. */
     public Investment(String name, String number, BigDecimal initialAmount, BigDecimal monthlyRate,
                       LocalDate applicationDate) {
-        setName(name);
-        setNumber(number);
-        setInitialAmount(initialAmount);
-        setMonthlyRate(monthlyRate);
-        setApplicationDate(applicationDate);
+        this.name = requiredText(name, "Nome do investimento obrigatório.");
+        this.number = requiredText(number, "Número do investimento obrigatório.");
+        this.initialAmount = Money.positive(initialAmount, "Valor inicial");
+        this.monthlyRate = validateMonthlyRate(monthlyRate);
+        this.applicationDate = Objects.requireNonNull(applicationDate, "Data de aplicação obrigatória.");
+        this.lastUpdateDate = applicationDate;
         this.balance = this.initialAmount;
     }
 
@@ -141,14 +142,12 @@ public class Investment {
 
     /** Define um nome obrigatório, removendo espaços externos. */
     public void setName(String name) {
-        if (name == null || name.isBlank()) throw new IllegalArgumentException("Nome do investimento obrigatório.");
-        this.name = name.trim();
+        this.name = requiredText(name, "Nome do investimento obrigatório.");
     }
 
     /** Define um identificador obrigatório, removendo espaços externos. */
     public void setNumber(String number) {
-        if (number == null || number.isBlank()) throw new IllegalArgumentException("Número do investimento obrigatório.");
-        this.number = number.trim();
+        this.number = requiredText(number, "Número do investimento obrigatório.");
     }
 
     /** Permite alterar o aporte somente antes de operações ou rendimentos. */
@@ -167,11 +166,7 @@ public class Investment {
 
     /** Define a taxa mensal como fração entre zero e um, inclusive. */
     public void setMonthlyRate(BigDecimal monthlyRate) {
-        Objects.requireNonNull(monthlyRate, "Taxa mensal obrigatória.");
-        if (monthlyRate.signum() < 0 || monthlyRate.compareTo(BigDecimal.ONE) > 0) {
-            throw new IllegalArgumentException("A taxa mensal deve estar entre 0 e 1 (inclusive).");
-        }
-        this.monthlyRate = monthlyRate;
+        this.monthlyRate = validateMonthlyRate(monthlyRate);
     }
 
     /** Define diretamente um saldo não negativo. */
@@ -458,5 +453,20 @@ public class Investment {
         // Mantém o enum legado em sincronia com as duas políticas independentes.
         taxRegime = iofOption == IofOption.EXEMPT && irOption == IrOption.EXEMPT
                 ? TaxRegime.TAX_FREE : TaxRegime.STANDARD;
+    }
+
+    private static String requiredText(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(message);
+        }
+        return value.trim();
+    }
+
+    private static BigDecimal validateMonthlyRate(BigDecimal monthlyRate) {
+        Objects.requireNonNull(monthlyRate, "Taxa mensal obrigatória.");
+        if (monthlyRate.signum() < 0 || monthlyRate.compareTo(BigDecimal.ONE) > 0) {
+            throw new IllegalArgumentException("A taxa mensal deve estar entre 0 e 1 (inclusive).");
+        }
+        return monthlyRate;
     }
 }
