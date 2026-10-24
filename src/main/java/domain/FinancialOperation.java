@@ -1,7 +1,6 @@
 package domain;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Objects;
 
@@ -52,12 +51,7 @@ public class FinancialOperation {
 
     /** Define um valor positivo e arredonda para centavos. */
     public void setAmount(BigDecimal amount) {
-        Objects.requireNonNull(amount, "Valor obrigatório.");
-        BigDecimal rounded = amount.setScale(2, RoundingMode.HALF_UP);
-        if (amount.signum() <= 0 || rounded.signum() <= 0) {
-            throw new IllegalArgumentException("O valor da operação deve ser positivo.");
-        }
-        this.amount = rounded;
+        this.amount = Money.positive(amount, "O valor da operação");
     }
 
     /** Define uma descrição não vazia e remove espaços externos. */
@@ -96,12 +90,7 @@ public class FinancialOperation {
 
     /** Centraliza a validação monetária usada pelo cadastro completo. */
     private static BigDecimal validateAmount(BigDecimal amount) {
-        Objects.requireNonNull(amount, "Valor obrigatório.");
-        BigDecimal rounded = amount.setScale(2, RoundingMode.HALF_UP);
-        if (amount.signum() <= 0 || rounded.signum() <= 0) {
-            throw new IllegalArgumentException("O valor da operação deve ser positivo.");
-        }
-        return rounded;
+        return Money.positive(amount, "O valor da operação");
     }
 
     /** Centraliza a validação e normalização da descrição. */
