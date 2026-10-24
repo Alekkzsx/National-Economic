@@ -49,18 +49,20 @@ periodicidade de rendimento, vencimento, permanência mínima, frequência de
 resgate e opções de IOF/IR. Valores monetários usam ponto ou vírgula como
 separador decimal.
 
-## Teste autônomo
+## Testes autônomos
 
-O teste do domínio não exige JUnit:
+Os testes executáveis do domínio e do terminal não exigem JUnit:
 
 ```sh
-javac -encoding UTF-8 -d out $(find src/main/java -name '*.java') \
-  src/test/java/InvestmentSystemSelfTest.java
+javac -encoding UTF-8 -d out $(find src/main/java src/test/java -name '*.java' \
+  ! -path 'src/test/java/market/*')
 java -ea -cp out InvestmentSystemSelfTest
+java -ea -cp out app.ConsoleInputSelfTest
 ```
 
-O teste de protocolo em `src/test/java` usa JUnit 5; este repositório não inclui
-um gerenciador de build nem as dependências de teste.
+Os testes de integração de protocolo em `src/test/java/market` usam JUnit 5;
+este repositório não inclui um gerenciador de build nem as dependências de
+teste.
 
 ## Organização
 
@@ -75,6 +77,7 @@ src/main/java/
 
 src/test/java/
 ├── InvestmentSystemSelfTest.java
+├── app/        # Testes autônomos de interação com o terminal
 └── market/    # Testes do protocolo de cotações
 ```
 
