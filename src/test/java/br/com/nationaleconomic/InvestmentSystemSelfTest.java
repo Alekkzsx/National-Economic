@@ -1,6 +1,7 @@
 package br.com.nationaleconomic;
 
 import br.com.nationaleconomic.domain.FinancialOperation;
+import br.com.nationaleconomic.domain.CalendarDate;
 import br.com.nationaleconomic.domain.IofOption;
 import br.com.nationaleconomic.domain.IrOption;
 import br.com.nationaleconomic.domain.Investment;
@@ -21,6 +22,37 @@ public final class InvestmentSystemSelfTest {
     private InvestmentSystemSelfTest() { }
 
     public static void main(String[] args) throws Exception {
+        CalendarDate calendarDate = new CalendarDate(24, 10, 2026);
+        check(calendarDate.dayOfWeek() == 0, "data sábado por extenso numérico");
+        check(calendarDate.dayOfWeekName().equals("sábado"), "nome do dia em pt-BR");
+        check(calendarDate.dayOfWeek(25, 10, 2026) == 1, "overload numérico da data");
+        check(calendarDate.dayOfWeekName(26, 10, 2026).equals("segunda-feira"),
+                "overload por extenso da data");
+        expectRejected(() -> calendarDate.setCadastro(31, 2, 2026), "data inválida");
+        calendarDate.setCadastro(LocalDate.of(2026, 10, 26));
+        check(calendarDate.getDay() == 26 && calendarDate.getMonth() == 10
+                && calendarDate.getYear() == 2026 && calendarDate.toString().contains("segunda-feira"),
+                "cadastro e getters de data");
+
+        PersonalData alternateData = new PersonalData("Pessoa", "52998224725");
+        check(alternateData.getMobile().isEmpty(), "overload de cadastro sem celular");
+        alternateData.alterarDados("Pessoa Atualizada", "(11) 98765-4321");
+        check(alternateData.getName().equals("Pessoa Atualizada") && alternateData.getMobile().equals("11987654321"),
+                "sobrecarga de alteração de dados pessoais");
+        class SpecializedOperation extends FinancialOperation {
+            SpecializedOperation() {
+                super(LocalDate.of(2026, 1, 1), new BigDecimal("2"), "Inicial", OperationType.DEPOSIT);
+            }
+        }
+        FinancialOperation mutableOperation = new SpecializedOperation();
+        mutableOperation.setCadastro(2, 1, 2026, new BigDecimal("3.456"), "  Atualizada  ", OperationType.WITHDRAWAL);
+        check(mutableOperation.date().equals(LocalDate.of(2026, 1, 2))
+                && mutableOperation.getAmount().compareTo(new BigDecimal("3.46")) == 0
+                && mutableOperation.description().equals("Atualizada")
+                && mutableOperation.getType() == OperationType.WITHDRAWAL,
+                "operação extensível, accessors compatíveis e cadastro sobrecarregado");
+        expectRejected(() -> mutableOperation.setAmount(BigDecimal.ZERO), "valor inválido da operação");
+
         PersonalData person = new PersonalData("Ana Silva", "529.982.247-25", "(11) 98765-4321");
         check(!person.toString().contains("52998224725"), "CPF completo não pode aparecer no toString");
         check(Investment.calendarDayIndex(LocalDate.of(2026, 10, 24)) == 0, "sábado deve mapear para zero");
