@@ -1,6 +1,6 @@
 package br.com.nationaleconomic.domain;
 
-/** Frequência mínima entre datas permitidas para resgate. */
+/** Frequência entre datas permitidas para resgate, medida em dias corridos. */
 public enum RedemptionFrequency {
     DAILY(1),
     MONTHLY(30),
