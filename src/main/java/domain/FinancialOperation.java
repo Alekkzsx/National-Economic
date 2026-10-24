@@ -23,7 +23,10 @@ public class FinancialOperation {
 
     /** Cria a operação usando as mesmas validações do cadastro. */
     public FinancialOperation(LocalDate date, BigDecimal amount, String description, OperationType type) {
-        setCadastro(date, amount, description, type);
+        this.date = Objects.requireNonNull(date, "Data obrigatória.");
+        this.type = Objects.requireNonNull(type, "Tipo obrigatório.");
+        this.amount = validateAmount(amount);
+        this.description = validateDescription(description);
     }
 
     // Os accessors sem prefixo preservam o formato de acesso usado pelo extrato.
