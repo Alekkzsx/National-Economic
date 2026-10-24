@@ -24,7 +24,7 @@ javac -encoding UTF-8 -d out $(find src/main/java -name '*.java')
 ## Executar o sistema
 
 ```sh
-java -cp out br.com.nationaleconomic.app.Main
+java -cp out app.Main
 ```
 
 O sistema carrega os dados de `data/sgi.db`, quando o arquivo existe, e salva
@@ -36,7 +36,7 @@ o programa estiver em execução.
 Em outro terminal, execute:
 
 ```sh
-java -cp out br.com.nationaleconomic.market.MarketServerMain 5050 10.50 1.25 5.10 5.55
+java -cp out market.MarketServerMain 5050 10.50 1.25 5.10 5.55
 ```
 
 Argumentos: `porta SELICRA CDIR USD EUR`. Sem argumentos, a porta padrão é
@@ -55,8 +55,8 @@ O teste do domínio não exige JUnit:
 
 ```sh
 javac -encoding UTF-8 -d out $(find src/main/java -name '*.java') \
-  src/test/java/br/com/nationaleconomic/InvestmentSystemSelfTest.java
-java -ea -cp out br.com.nationaleconomic.InvestmentSystemSelfTest
+  src/test/java/InvestmentSystemSelfTest.java
+java -ea -cp out InvestmentSystemSelfTest
 ```
 
 O teste de protocolo em `src/test/java` usa JUnit 5; este repositório não inclui
@@ -64,10 +64,19 @@ um gerenciador de build nem as dependências de teste.
 
 ## Organização
 
-- `domain`: entidades e regras do negócio financeiro.
-- `service`: gestão de clientes/aplicações e persistência.
-- `app`: menu e interação de terminal.
-- `market`: protocolo TCP, servidor e cliente de cotações.
+Cada módulo fica em uma pasta direta, sem a cadeia de diretórios `br/com/...`:
+
+```text
+src/main/java/
+├── app/       # Menu e interação com o usuário
+├── domain/    # Entidades e regras financeiras
+├── market/    # Protocolo TCP, cliente e servidor de cotações
+└── service/   # Gestão de clientes, aplicações e persistência
+
+src/test/java/
+├── InvestmentSystemSelfTest.java
+└── market/    # Testes do protocolo de cotações
+```
 
 Valores monetários e taxas são representados com `BigDecimal`. Datas usam
 `java.time`. A atualização de aplicações é limitada a dias úteis, e o sistema
