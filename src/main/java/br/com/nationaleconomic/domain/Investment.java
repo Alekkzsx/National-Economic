@@ -199,7 +199,10 @@ public class Investment {
     private BigDecimal iofRate() {
         int days = Math.max(1, elapsedDays);
         if (days >= 30) return BigDecimal.ZERO;
-        return BigDecimal.valueOf(30 - days).divide(THIRTY, RATE_CONTEXT);
+        // Tabela regressiva oficial expressa em pontos percentuais inteiros: 96, 93, ..., 3, 0.
+        int percentage = BigDecimal.valueOf(30L - days).multiply(BigDecimal.valueOf(100))
+                .divide(THIRTY, 0, RoundingMode.DOWN).intValueExact();
+        return BigDecimal.valueOf(percentage).movePointLeft(2);
     }
 
     private BigDecimal irRate() {
