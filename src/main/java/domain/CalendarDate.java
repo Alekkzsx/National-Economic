@@ -17,12 +17,12 @@ public class CalendarDate {
 
     /** Cria a instância a partir de uma data já representada por {@link LocalDate}. */
     public CalendarDate(LocalDate date) {
-        setDate(date);
+        this.date = Objects.requireNonNull(date, "Data obrigatória.");
     }
 
     /** Cria a instância validando dia, mês e ano pelo calendário gregoriano. */
     public CalendarDate(int day, int month, int year) {
-        setCadastro(day, month, year);
+        this.date = validatedDate(day, month, year);
     }
 
     /** Retorna a data armazenada. */
