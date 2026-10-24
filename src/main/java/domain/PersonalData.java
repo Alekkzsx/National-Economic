@@ -19,12 +19,16 @@ public class PersonalData {
 
     /** Cria os dados pessoais com nome, CPF e celular. */
     public PersonalData(String name, String cpf, String mobile) {
-        setCadastro(name, cpf, mobile);
+        this.name = validateName(name);
+        this.cpf = validateCpf(cpf);
+        this.mobile = validateMobile(mobile);
     }
 
     /** Cria os dados pessoais sem informar um celular. */
     public PersonalData(String name, String cpf) {
-        setCadastro(name, cpf);
+        this.name = validateName(name);
+        this.cpf = validateCpf(cpf);
+        this.mobile = "";
     }
 
     /** Accessor conciso para o nome. */
