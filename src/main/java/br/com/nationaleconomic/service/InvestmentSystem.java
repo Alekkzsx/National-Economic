@@ -35,7 +35,8 @@ import java.util.Set;
 
 public class InvestmentSystem {
     private static final int MAX_CLIENTS = 100;
-    private static final String FORMAT_HEADER = "NATIONAL-ECONOMIC\t2";
+    private static final String FORMAT_HEADER = "NATIONAL-ECONOMIC\t3";
+    private static final String VERSION_2_HEADER = "NATIONAL-ECONOMIC\t2";
     private static final String LEGACY_FORMAT_HEADER = "NATIONAL-ECONOMIC\t1";
 
     private final Map<String, ClientAccount> clients = new LinkedHashMap<>();
@@ -133,15 +134,16 @@ public class InvestmentSystem {
                     for (Investment investment : client.getInvestments()) {
                         writeRecord(writer, "I", data.getCpf(), investment.getNumber(), investment.getName(),
                                 investment.getInitialAmount().toPlainString(), investment.getMonthlyRate().toPlainString(),
-                                investment.getApplicationDate().toString(), investment.getBalance().toPlainString(),
-                                investment.getGrossEarnings().toPlainString(), investment.getLastUpdateDate().toString(),
+                                investment.getApplicationDate().toString(), investment.getCreditedBalance().toPlainString(),
+                                investment.getCreditedEarnings().toPlainString(), investment.getLastUpdateDate().toString(),
                                 Integer.toString(investment.getElapsedDays()), Integer.toString(investment.getApplicationDays()),
                                 Integer.toString(investment.getOperationCount()), investment.getDayCountConvention().name(),
                                 investment.getTaxRegime().name(), investment.getYieldPeriod().name(),
                                 Integer.toString(investment.getMaturityDays()),
                                 Integer.toString(investment.getMinimumStayDays()),
                                 investment.getRedemptionFrequency().name(), investment.getIofOption().name(),
-                                investment.getIrOption().name());
+                                investment.getIrOption().name(), investment.getPendingEarnings().toPlainString(),
+                                Integer.toString(investment.getDaysSinceYield()));
                         for (FinancialOperation operation : statements.getOrDefault(investment.getNumber(), List.of())) {
                             writeRecord(writer, "O", data.getCpf(), investment.getNumber(), operation.date().toString(),
                                     operation.amount().toPlainString(), operation.description(), operation.type().name());
@@ -166,8 +168,10 @@ public class InvestmentSystem {
         Map<String, Investment> investments = new LinkedHashMap<>();
         try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             String header = reader.readLine();
-            boolean legacyFormat = LEGACY_FORMAT_HEADER.equals(header);
-            if (!legacyFormat && !FORMAT_HEADER.equals(header)) {
+            int formatVersion = LEGACY_FORMAT_HEADER.equals(header) ? 1
+                    : VERSION_2_HEADER.equals(header) ? 2
+                    : FORMAT_HEADER.equals(header) ? 3 : 0;
+            if (formatVersion == 0) {
                 throw new IOException("Formato de arquivo desconhecido ou versão incompatível.");
             }
             String line;
@@ -180,7 +184,7 @@ public class InvestmentSystem {
                     switch (fields.get(0)) {
                         case "C" -> system.readClient(fields);
                         case "I" -> {
-                            Investment investment = system.readInvestment(fields, legacyFormat);
+                            Investment investment = system.readInvestment(fields, formatVersion);
                             if (investments.putIfAbsent(investment.getNumber(), investment) != null) {
                                 throw new IllegalArgumentException("Número de investimento duplicado.");
                             }
@@ -211,21 +215,38 @@ public class InvestmentSystem {
         registerClient(data, Integer.parseInt(f.get(4)), Long.parseLong(f.get(5)));
     }
 
-    private Investment readInvestment(List<String> f, boolean legacyFormat) {
-        requireFieldCount(f, legacyFormat ? 15 : 21);
+    private Investment readInvestment(List<String> f, int formatVersion) {
+        requireFieldCount(f, switch (formatVersion) {
+            case 1 -> 15;
+            case 2 -> 21;
+            case 3 -> 23;
+            default -> throw new IllegalArgumentException("Versão inválida.");
+        });
         ClientAccount client = requireClient(f.get(1));
         Investment investment = new Investment(f.get(3), f.get(2), new BigDecimal(f.get(4)),
                 new BigDecimal(f.get(5)), LocalDate.parse(f.get(6)));
         investment.setDayCountConvention(DayCountConvention.valueOf(f.get(13)));
         investment.setTaxRegime(TaxRegime.valueOf(f.get(14)));
-        if (legacyFormat) {
+        if (formatVersion == 1) {
             investment.restoreState(new BigDecimal(f.get(7)), new BigDecimal(f.get(8)), LocalDate.parse(f.get(9)),
                     Integer.parseInt(f.get(10)), Integer.parseInt(f.get(11)), Integer.parseInt(f.get(12)));
         } else {
-            investment.restoreState(new BigDecimal(f.get(7)), new BigDecimal(f.get(8)), LocalDate.parse(f.get(9)),
-                    Integer.parseInt(f.get(10)), Integer.parseInt(f.get(11)), Integer.parseInt(f.get(12)),
+            Object[] terms = {
                     YieldPeriod.valueOf(f.get(15)), Integer.parseInt(f.get(16)), Integer.parseInt(f.get(17)),
-                    RedemptionFrequency.valueOf(f.get(18)), IofOption.valueOf(f.get(19)), IrOption.valueOf(f.get(20)));
+                    RedemptionFrequency.valueOf(f.get(18)), IofOption.valueOf(f.get(19)), IrOption.valueOf(f.get(20))
+            };
+            if (formatVersion == 2) {
+                investment.restoreState(new BigDecimal(f.get(7)), new BigDecimal(f.get(8)), LocalDate.parse(f.get(9)),
+                        Integer.parseInt(f.get(10)), Integer.parseInt(f.get(11)), Integer.parseInt(f.get(12)),
+                        (YieldPeriod) terms[0], (int) terms[1], (int) terms[2], (RedemptionFrequency) terms[3],
+                        (IofOption) terms[4], (IrOption) terms[5]);
+            } else {
+                investment.restoreState(new BigDecimal(f.get(7)), new BigDecimal(f.get(8)), LocalDate.parse(f.get(9)),
+                        Integer.parseInt(f.get(10)), Integer.parseInt(f.get(11)), Integer.parseInt(f.get(12)),
+                        (YieldPeriod) terms[0], (int) terms[1], (int) terms[2], (RedemptionFrequency) terms[3],
+                        (IofOption) terms[4], (IrOption) terms[5], new BigDecimal(f.get(21)),
+                        Integer.parseInt(f.get(22)));
+            }
         }
         client.addInvestment(investment);
         return investment;
