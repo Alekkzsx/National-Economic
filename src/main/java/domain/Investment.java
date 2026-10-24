@@ -1,4 +1,4 @@
-package br.com.nationaleconomic.domain;
+package domain;
 
 import java.math.BigDecimal;
 import java.math.MathContext;

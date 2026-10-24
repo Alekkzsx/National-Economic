@@ -1,16 +1,16 @@
-package br.com.nationaleconomic.app;
+package app;
 
-import br.com.nationaleconomic.domain.ClientAccount;
-import br.com.nationaleconomic.domain.FinancialOperation;
-import br.com.nationaleconomic.domain.IofOption;
-import br.com.nationaleconomic.domain.IrOption;
-import br.com.nationaleconomic.domain.Investment;
-import br.com.nationaleconomic.domain.OperationType;
-import br.com.nationaleconomic.domain.PersonalData;
-import br.com.nationaleconomic.domain.RedemptionFrequency;
-import br.com.nationaleconomic.domain.YieldPeriod;
-import br.com.nationaleconomic.market.QuoteClient;
-import br.com.nationaleconomic.service.InvestmentSystem;
+import domain.ClientAccount;
+import domain.FinancialOperation;
+import domain.IofOption;
+import domain.IrOption;
+import domain.Investment;
+import domain.OperationType;
+import domain.PersonalData;
+import domain.RedemptionFrequency;
+import domain.YieldPeriod;
+import market.QuoteClient;
+import service.InvestmentSystem;
 
 import java.io.IOException;
 import java.math.BigDecimal;

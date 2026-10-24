@@ -1,4 +1,4 @@
-package br.com.nationaleconomic.domain;
+package domain;
 
 /** Periodicidade de crédito dos rendimentos, medida em dias corridos desde a aplicação. */
 public enum YieldPeriod {

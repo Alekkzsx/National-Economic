@@ -1,4 +1,4 @@
-package br.com.nationaleconomic.market;
+package market;
 
 import java.io.IOException;
 import java.math.BigDecimal;

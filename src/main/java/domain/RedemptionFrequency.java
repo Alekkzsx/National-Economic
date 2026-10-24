@@ -1,4 +1,4 @@
-package br.com.nationaleconomic.domain;
+package domain;
 
 /** Frequência entre datas permitidas para resgate, medida em dias corridos. */
 public enum RedemptionFrequency {

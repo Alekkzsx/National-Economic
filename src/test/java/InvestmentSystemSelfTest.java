@@ -1,15 +1,14 @@
-package br.com.nationaleconomic;
 
-import br.com.nationaleconomic.domain.FinancialOperation;
-import br.com.nationaleconomic.domain.CalendarDate;
-import br.com.nationaleconomic.domain.IofOption;
-import br.com.nationaleconomic.domain.IrOption;
-import br.com.nationaleconomic.domain.Investment;
-import br.com.nationaleconomic.domain.OperationType;
-import br.com.nationaleconomic.domain.PersonalData;
-import br.com.nationaleconomic.domain.RedemptionFrequency;
-import br.com.nationaleconomic.service.InvestmentSystem;
-import br.com.nationaleconomic.domain.YieldPeriod;
+import domain.FinancialOperation;
+import domain.CalendarDate;
+import domain.IofOption;
+import domain.IrOption;
+import domain.Investment;
+import domain.OperationType;
+import domain.PersonalData;
+import domain.RedemptionFrequency;
+import service.InvestmentSystem;
+import domain.YieldPeriod;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;

@@ -1,21 +1,29 @@
-package br.com.nationaleconomic.domain;
+package domain;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Objects;
 
-/** Operação financeira mutável, extensível e validada em cada alteração. */
+/**
+ * Representa um lançamento de depósito ou retirada.
+ *
+ * <p>A classe é mutável para permitir os métodos de cadastro e alteração do
+ * exercício. Cada valor é validado antes de ser armazenado; quantias são
+ * arredondadas para duas casas decimais.</p>
+ */
 public class FinancialOperation {
     private LocalDate date;
     private BigDecimal amount;
     private String description;
     private OperationType type;
 
+    /** Cria a operação usando as mesmas validações do cadastro. */
     public FinancialOperation(LocalDate date, BigDecimal amount, String description, OperationType type) {
         setCadastro(date, amount, description, type);
     }
 
+    // Accessors sem prefixo preservam a API usada pelos registros de extrato.
     public LocalDate date() { return date; }
     public BigDecimal amount() { return amount; }
     public String description() { return description; }
@@ -49,8 +57,11 @@ public class FinancialOperation {
         this.type = Objects.requireNonNull(type, "Tipo obrigatório.");
     }
 
+    /**
+     * Atualiza todos os dados como uma única operação: só altera o objeto
+     * depois que todos os campos passaram pela validação.
+     */
     public void setCadastro(LocalDate date, BigDecimal amount, String description, OperationType type) {
-        // Validar primeiro os valores de entrada evita deixar o objeto parcialmente alterado.
         Objects.requireNonNull(date, "Data obrigatória.");
         Objects.requireNonNull(type, "Tipo obrigatório.");
         BigDecimal rounded = validateAmount(amount);
@@ -61,6 +72,7 @@ public class FinancialOperation {
         this.type = type;
     }
 
+    /** Sobrecarga de cadastro para datas informadas como dia, mês e ano. */
     public void setCadastro(int day, int month, int year, BigDecimal amount,
                             String description, OperationType type) {
         setCadastro(LocalDate.of(year, month, day), amount, description, type);

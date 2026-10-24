@@ -1,16 +1,16 @@
-package br.com.nationaleconomic.service;
+package service;
 
-import br.com.nationaleconomic.domain.ClientAccount;
-import br.com.nationaleconomic.domain.DayCountConvention;
-import br.com.nationaleconomic.domain.FinancialOperation;
-import br.com.nationaleconomic.domain.Investment;
-import br.com.nationaleconomic.domain.IofOption;
-import br.com.nationaleconomic.domain.IrOption;
-import br.com.nationaleconomic.domain.OperationType;
-import br.com.nationaleconomic.domain.PersonalData;
-import br.com.nationaleconomic.domain.RedemptionFrequency;
-import br.com.nationaleconomic.domain.TaxRegime;
-import br.com.nationaleconomic.domain.YieldPeriod;
+import domain.ClientAccount;
+import domain.DayCountConvention;
+import domain.FinancialOperation;
+import domain.Investment;
+import domain.IofOption;
+import domain.IrOption;
+import domain.OperationType;
+import domain.PersonalData;
+import domain.RedemptionFrequency;
+import domain.TaxRegime;
+import domain.YieldPeriod;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;

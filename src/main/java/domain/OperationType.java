@@ -1,4 +1,4 @@
-package br.com.nationaleconomic.domain;
+package domain;
 
 public enum OperationType {
     DEPOSIT,

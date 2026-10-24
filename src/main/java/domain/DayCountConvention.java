@@ -1,4 +1,4 @@
-package br.com.nationaleconomic.domain;
+package domain;
 
 /** Convenções para converter a taxa mensal em taxa diária. */
 public enum DayCountConvention {
