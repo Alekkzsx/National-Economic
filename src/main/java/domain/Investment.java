@@ -2,7 +2,6 @@ package domain;
 
 import java.math.BigDecimal;
 import java.math.MathContext;
-import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -16,8 +15,6 @@ import java.util.Objects;
  * em atualizações de dias úteis.</p>
  */
 public class Investment {
-    /** Quantidade padrão de casas decimais usada nos valores monetários. */
-    private static final int MONEY_SCALE = 2;
     /** Precisão intermediária para os cálculos de taxa e juros. */
     private static final MathContext RATE_CONTEXT = MathContext.DECIMAL128;
     /** Nome legível da aplicação. */
@@ -31,9 +28,9 @@ public class Investment {
     /** Taxa mensal representada como fração decimal. */
     private BigDecimal monthlyRate;
     /** Rendimentos já incorporados ao saldo. */
-    private BigDecimal accruedEarnings = BigDecimal.ZERO.setScale(MONEY_SCALE);
+    private BigDecimal accruedEarnings = Money.ZERO;
     /** Rendimentos apurados que aguardam a data de crédito configurada. */
-    private BigDecimal pendingEarnings = BigDecimal.ZERO.setScale(MONEY_SCALE);
+    private BigDecimal pendingEarnings = Money.ZERO;
     /** Convenção usada para converter a taxa mensal em taxa diária. */
     private DayCountConvention dayCountConvention = DayCountConvention.THIRTY_360;
     /** Regime agregado, mantido em conjunto com as opções específicas de imposto. */
@@ -92,21 +89,25 @@ public class Investment {
     /** Retorna o saldo que já recebeu rendimentos creditados. */
     public BigDecimal getCreditedBalance() { return balance; }
     /** Soma o saldo creditado aos rendimentos que aguardam crédito. */
-    public BigDecimal getGrossBalance() { return balance.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP); }
+    public BigDecimal getGrossBalance() { return Money.round(balance.add(pendingEarnings)); }
     /** Retorna o saldo bruto descontados os impostos devidos. */
-    public BigDecimal getNetBalance() { return getGrossBalance().subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getNetBalance() { return Money.round(getGrossBalance().subtract(getTaxes()).max(BigDecimal.ZERO)); }
     /** Soma os rendimentos creditados aos rendimentos pendentes. */
-    public BigDecimal getGrossEarnings() { return accruedEarnings.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP); }
+    public BigDecimal getGrossEarnings() { return Money.round(accruedEarnings.add(pendingEarnings)); }
     /** Retorna somente os rendimentos já incorporados ao saldo. */
     public BigDecimal getCreditedEarnings() { return accruedEarnings; }
     /** Retorna os rendimentos após deduzir os tributos atuais. */
-    public BigDecimal getNetEarnings() { return getGrossEarnings().subtract(getTaxes()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getNetEarnings() { return Money.round(getGrossEarnings().subtract(getTaxes()).max(BigDecimal.ZERO)); }
     /** Calcula o IOF sobre os rendimentos conforme a opção configurada. */
-    public BigDecimal getIof() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : getGrossEarnings().multiply(iofRate()).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getIof() {
+        return InvestmentTaxCalculator.calculateIof(getGrossEarnings(), elapsedDays, iofOption, taxRegime);
+    }
     /** Calcula o IR sobre os rendimentos restantes depois do IOF. */
-    public BigDecimal getIr() { return taxRegime == TaxRegime.TAX_FREE ? moneyZero() : getGrossEarnings().subtract(getIof()).multiply(irRate()).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getIr() {
+        return InvestmentTaxCalculator.calculateIr(getGrossEarnings(), getIof(), elapsedDays, irOption, taxRegime);
+    }
     /** Soma os impostos calculados para a posição atual. */
-    public BigDecimal getTaxes() { return getIof().add(getIr()).setScale(2, RoundingMode.HALF_UP); }
+    public BigDecimal getTaxes() { return Money.round(getIof().add(getIr())); }
     /** Retorna a contagem de dias corridos desde o início. */
     public int getElapsedDays() { return elapsedDays; }
     /** Retorna a contagem de dias úteis considerados na correção. */
@@ -152,7 +153,7 @@ public class Investment {
 
     /** Permite alterar o aporte somente antes de operações ou rendimentos. */
     public void setInitialAmount(BigDecimal amount) {
-        BigDecimal value = positiveMoney(amount, "Valor inicial");
+        BigDecimal value = Money.positive(amount, "Valor inicial");
         if (balance != null) {
             if (operationCount > 0 || accruedEarnings.signum() > 0 || pendingEarnings.signum() > 0) {
                 throw new IllegalStateException("Não é possível alterar o aporte inicial após movimentação ou rendimento.");
@@ -175,7 +176,7 @@ public class Investment {
 
     /** Define diretamente um saldo não negativo. */
     public void setBalance(BigDecimal balance) {
-        this.balance = nonNegativeMoney(balance, "Saldo");
+        this.balance = Money.nonNegative(balance, "Saldo");
     }
 
     /** Define a base anual usada para converter taxa mensal em diária. */
@@ -292,9 +293,9 @@ public class Investment {
 
     private void creditPendingEarnings() {
         if (pendingEarnings.signum() > 0) {
-            balance = balance.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-            accruedEarnings = accruedEarnings.add(pendingEarnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-            pendingEarnings = moneyZero();
+            balance = Money.round(balance.add(pendingEarnings));
+            accruedEarnings = Money.round(accruedEarnings.add(pendingEarnings));
+            pendingEarnings = Money.ZERO;
         }
         // Mantém apenas dias excedentes ao período para o próximo ciclo de crédito.
         if (yieldPeriod != YieldPeriod.AT_MATURITY) {
@@ -347,15 +348,15 @@ public class Investment {
         Objects.requireNonNull(operation, "Operação obrigatória.");
         if (operationCount >= 100) throw new IllegalStateException("Limite de 100 operações por aplicação atingido.");
         if (operation.date().isBefore(applicationDate)) throw new IllegalArgumentException("Operação anterior à aplicação.");
-        BigDecimal amount = operation.amount().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal amount = Money.round(operation.amount());
         if (operation.type() == OperationType.DEPOSIT) {
-            balance = balance.add(amount).setScale(2, RoundingMode.HALF_UP);
+            balance = Money.round(balance.add(amount));
         } else {
             if (!canRedeemOn(operation.date())) {
                 throw new IllegalArgumentException("Resgate fora da carência ou da frequência permitida.");
             }
             if (amount.compareTo(balance) > 0) throw new IllegalArgumentException("Saldo insuficiente.");
-            balance = balance.subtract(amount).setScale(2, RoundingMode.HALF_UP);
+            balance = Money.round(balance.subtract(amount));
         }
         operationCount++;
     }
@@ -393,9 +394,9 @@ public class Investment {
                              int maturityDays, int minimumStayDays, RedemptionFrequency redemptionFrequency,
                              IofOption iofOption, IrOption irOption, BigDecimal pendingEarnings,
                              int daysSinceYield) {
-        this.balance = nonNegativeMoney(balance, "Saldo");
-        this.accruedEarnings = nonNegativeMoney(accruedEarnings, "Rendimento");
-        this.pendingEarnings = nonNegativeMoney(pendingEarnings, "Rendimento pendente");
+        this.balance = Money.nonNegative(balance, "Saldo");
+        this.accruedEarnings = Money.nonNegative(accruedEarnings, "Rendimento");
+        this.pendingEarnings = Money.nonNegative(pendingEarnings, "Rendimento pendente");
         this.lastUpdateDate = Objects.requireNonNull(lastUpdateDate, "Data de atualização obrigatória.");
         if (lastUpdateDate.isBefore(applicationDate)) throw new IllegalArgumentException("Atualização anterior à aplicação.");
         if (elapsedDays < 0 || applicationDays < 0 || operationCount < 0 || operationCount > 100
@@ -447,49 +448,11 @@ public class Investment {
         BigDecimal annualizedRate = monthlyRate.multiply(BigDecimal.valueOf(12), RATE_CONTEXT);
         BigDecimal dailyRate = annualizedRate.divide(
                 BigDecimal.valueOf(dayCountConvention.daysPerYear()), RATE_CONTEXT);
-        BigDecimal earnings = balance.multiply(dailyRate, RATE_CONTEXT).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal earnings = Money.round(balance.multiply(dailyRate, RATE_CONTEXT));
         if (earnings.signum() > 0) {
-            pendingEarnings = pendingEarnings.add(earnings).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+            pendingEarnings = Money.round(pendingEarnings.add(earnings));
         }
     }
-
-    private BigDecimal iofRate() {
-        // O IOF do exercício é uma alíquota fixa, não a tabela regressiva usual.
-        return switch (iofOption) {
-            case EXEMPT -> BigDecimal.ZERO;
-            case THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS ->
-                    elapsedDays < 30 ? new BigDecimal("0.035") : BigDecimal.ZERO;
-            case THREE_POINT_FIVE_PERCENT_ALWAYS -> new BigDecimal("0.035");
-        };
-    }
-
-    private BigDecimal irRate() {
-        // As faixas são aplicadas por dias corridos desde o cadastro da aplicação.
-        if (irOption == IrOption.EXEMPT) return BigDecimal.ZERO;
-        if (elapsedDays <= 180) return new BigDecimal("0.225");
-        if (elapsedDays <= 360) return new BigDecimal("0.20");
-        if (elapsedDays <= 720) return new BigDecimal("0.175");
-        return new BigDecimal("0.15");
-    }
-
-    /** Arredonda um valor positivo para centavos antes de armazená-lo. */
-    private static BigDecimal positiveMoney(BigDecimal value, String field) {
-        Objects.requireNonNull(value, field + " obrigatório.");
-        BigDecimal money = value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        if (money.signum() <= 0) throw new IllegalArgumentException(field + " deve ser positivo.");
-        return money;
-    }
-
-    /** Arredonda um valor não negativo para centavos antes de armazená-lo. */
-    private static BigDecimal nonNegativeMoney(BigDecimal value, String field) {
-        Objects.requireNonNull(value, field + " obrigatório.");
-        BigDecimal money = value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        if (money.signum() < 0) throw new IllegalArgumentException(field + " não pode ser negativo.");
-        return money;
-    }
-
-    /** Cria zero com a mesma escala monetária usada nos demais cálculos. */
-    private static BigDecimal moneyZero() { return BigDecimal.ZERO.setScale(MONEY_SCALE); }
 
     private void syncLegacyTaxRegime() {
         // Mantém o enum legado em sincronia com as duas políticas independentes.
