@@ -278,19 +278,15 @@ public final class Main {
     private void showQuotes() {
         String host = readRequired("Servidor de cotações (host): ");
         int port = readInt("Porta: ", 1, 65535);
-        String clientId = readRequired("CPF/identificador do cliente: ");
         try {
             Map<String, BigDecimal> quotes = new QuoteClient(host, port).getQuotes();
-            List<Investment> investments = system.getInvestments(clientId);
-            if (investments.isEmpty()) {
-                System.out.println("O cliente não possui aplicações cadastradas.");
+            if (quotes.isEmpty()) {
+                System.out.println("O servidor não disponibilizou cotações.");
                 return;
             }
-            System.out.println("Cotações das aplicações de " + maskCpf(clientId) + ":");
-            for (Investment investment : investments) {
-                String key = investment.getNumber();
-                BigDecimal quote = quotes.get(key);
-                System.out.printf("- %s: %s%n", key, quote == null ? "cotação indisponível" : money(quote));
+            System.out.println("Cotações disponíveis no servidor:");
+            for (Map.Entry<String, BigDecimal> quote : quotes.entrySet()) {
+                System.out.printf("- %s: %s%n", quote.getKey(), money(quote.getValue()));
             }
         } catch (IOException e) {
             System.out.println("Falha ao consultar o servidor de cotações: " + messageOf(e));
