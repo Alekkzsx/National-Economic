@@ -158,6 +158,7 @@ public class Investment {
         this.balance = nonNegativeMoney(balance, "Saldo");
         this.accruedEarnings = nonNegativeMoney(accruedEarnings, "Rendimento");
         this.lastUpdateDate = Objects.requireNonNull(lastUpdateDate, "Data de atualização obrigatória.");
+        if (lastUpdateDate.isBefore(applicationDate)) throw new IllegalArgumentException("Atualização anterior à aplicação.");
         if (elapsedDays < 0 || applicationDays < 0 || operationCount < 0 || operationCount > 100) {
             throw new IllegalArgumentException("Contadores inválidos.");
         }
@@ -196,15 +197,15 @@ public class Investment {
     }
 
     private BigDecimal iofRate() {
-        int days = Math.max(1, applicationDays);
+        int days = Math.max(1, elapsedDays);
         if (days >= 30) return BigDecimal.ZERO;
         return BigDecimal.valueOf(30 - days).divide(THIRTY, RATE_CONTEXT);
     }
 
     private BigDecimal irRate() {
-        if (applicationDays <= 180) return new BigDecimal("0.225");
-        if (applicationDays <= 360) return new BigDecimal("0.20");
-        if (applicationDays <= 720) return new BigDecimal("0.175");
+        if (elapsedDays <= 180) return new BigDecimal("0.225");
+        if (elapsedDays <= 360) return new BigDecimal("0.20");
+        if (elapsedDays <= 720) return new BigDecimal("0.175");
         return new BigDecimal("0.15");
     }
 
