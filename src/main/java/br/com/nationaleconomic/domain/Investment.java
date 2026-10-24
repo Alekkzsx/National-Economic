@@ -181,10 +181,12 @@ public class Investment {
         return maturityDays > 0 && elapsedDays >= maturityDays;
     }
 
+    /** Verifica carência e frequência de resgate na posição atual da aplicação. */
     public boolean canRedeem() {
         return elapsedDays >= minimumStayDays && isRedemptionDate();
     }
 
+    /** Indica quando o rendimento configurado vence; a capitalização financeira permanece diária. */
     public boolean isYieldDate() {
         return switch (yieldPeriod) {
             case DAILY -> true;
