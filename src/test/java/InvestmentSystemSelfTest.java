@@ -10,6 +10,7 @@ import domain.RedemptionFrequency;
 import service.InvestmentSystem;
 import domain.YieldPeriod;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,7 +53,19 @@ public final class InvestmentSystemSelfTest {
                 super(LocalDate.of(2026, 1, 1), new BigDecimal("2"), "Inicial", OperationType.DEPOSIT);
             }
         }
+        class OperationWithOverriddenSetup extends FinancialOperation {
+            OperationWithOverriddenSetup() {
+                super(LocalDate.of(2026, 1, 1), new BigDecimal("2"), "Inicial", OperationType.DEPOSIT);
+            }
+
+            @Override
+            public void setCadastro(LocalDate date, BigDecimal amount, String description, OperationType type) {
+                throw new AssertionError("O construtor não deve despachar para métodos sobrescrevíveis.");
+            }
+        }
         FinancialOperation mutableOperation = new SpecializedOperation();
+        check(new OperationWithOverriddenSetup().amount().compareTo(new BigDecimal("2.00")) == 0,
+                "construtor de operação não chama método sobrescrevível");
         mutableOperation.setCadastro(2, 1, 2026, new BigDecimal("3.456"), "  Atualizada  ", OperationType.WITHDRAWAL);
         check(mutableOperation.date().equals(LocalDate.of(2026, 1, 2))
                 && mutableOperation.getAmount().compareTo(new BigDecimal("3.46")) == 0
@@ -251,6 +264,28 @@ public final class InvestmentSystemSelfTest {
             check(oldInvestment.getDaysSinceYield() == 0, "contador de rendimento v2 derivado");
         } finally {
             Files.deleteIfExists(version2File);
+        }
+
+        // Arquivos corrompidos não podem incluir operação anterior à aplicação.
+        Path invalidHistoryFile = Path.of(".investment-system-invalid-history-self-test.tsv");
+        try {
+            Files.write(invalidHistoryFile, List.of(
+                    "NATIONAL-ECONOMIC\t3",
+                    "C\t52998224725\tAna Silva\t11987654321\t12\t3456",
+                    "I\t52998224725\tINV-INVALID\tConta\t100.00\t0.03\t2026-01-02\t100.00\t0.00\t"
+                            + "2026-01-02\t0\t0\t1\tTHIRTY_360\tSTANDARD\tDAILY\t0\t0\tDAILY\t"
+                            + "THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS\tREGRESSIVE\t0.00\t0",
+                    "O\t52998224725\tINV-INVALID\t2026-01-01\t1.00\tOperação inválida\tDEPOSIT"
+            ));
+            boolean invalidHistoryRejected = false;
+            try {
+                InvestmentSystem.load(invalidHistoryFile);
+            } catch (IOException expected) {
+                invalidHistoryRejected = expected.getMessage().contains("linha 4");
+            }
+            check(invalidHistoryRejected, "operação persistida anterior à aplicação deve ser rejeitada");
+        } finally {
+            Files.deleteIfExists(invalidHistoryFile);
         }
     }
 
