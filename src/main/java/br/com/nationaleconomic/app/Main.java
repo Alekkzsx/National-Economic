@@ -414,28 +414,8 @@ public final class Main {
         return "*".repeat(cpf.length() - 4) + cpf.substring(cpf.length() - 4);
     }
 
-    private static String firstText(Object... values) {
-        for (Object value : values) {
-            if (value != null && !value.toString().isBlank()) {
-                return value.toString();
-            }
-        }
-        return "";
-    }
-
     private static String money(BigDecimal value) {
         return value == null ? "não disponível" : "R$ " + value.setScale(2, java.math.RoundingMode.HALF_UP);
-    }
-
-    private static String moneyValue(Object value) {
-        if (value instanceof BigDecimal amount) {
-            return money(amount);
-        }
-        return displayValue(value);
-    }
-
-    private static String displayValue(Object value) {
-        return value == null ? "não disponível" : value.toString();
     }
 
     private static String messageOf(Throwable throwable) {
@@ -443,27 +423,6 @@ public final class Main {
         return message == null || message.isBlank() ? "erro sem detalhes" : message;
     }
 
-    /**
-     * Acessa getters convencionais e accessors de record sem depender de detalhes
-     * ainda não definidos nos modelos compartilhados.
-     */
-    private static Object property(Object target, String... methodNames) {
-        if (target == null) {
-            return null;
-        }
-        for (String methodName : methodNames) {
-            try {
-                Method method = target.getClass().getMethod(methodName);
-                return method.invoke(target);
-            } catch (NoSuchMethodException ignored) {
-                // Tenta o próximo nome convencional.
-            } catch (IllegalAccessException | InvocationTargetException | RuntimeException ignored) {
-                return null;
-            }
-
-            private static final class EndOfInputException extends RuntimeException {
-            }
-        }
-        return null;
+    private static final class EndOfInputException extends RuntimeException {
     }
 }
