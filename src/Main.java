@@ -1,4 +1,6 @@
-package app;
+import app.CliFormat;
+import app.ConsoleInput;
+import app.InvestmentTerms;
 
 import domain.ClientAccount;
 import domain.FinancialOperation;

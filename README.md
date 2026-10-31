@@ -18,13 +18,13 @@ Na raiz do repositório:
 
 ```sh
 mkdir -p out
-javac -encoding UTF-8 -d out $(find src/main/java -name '*.java')
+javac -encoding UTF-8 -d out $(find src -name '*.java')
 ```
 
 ## Executar o sistema
 
 ```sh
-java -cp out app.Main
+java -cp out Main
 ```
 
 O sistema carrega os dados de `data/sgi.db`, quando o arquivo existe, e salva
@@ -54,28 +54,29 @@ separador decimal.
 Os testes executáveis do domínio e do terminal não exigem JUnit:
 
 ```sh
-javac -encoding UTF-8 -d out $(find src/main/java src/test/java -name '*.java' \
-  ! -path 'src/test/java/market/*')
+javac -encoding UTF-8 -d out $(find src test -name '*.java' \
+  ! -path 'test/java/market/*')
 java -ea -cp out InvestmentSystemSelfTest
 java -ea -cp out app.ConsoleInputSelfTest
 ```
 
-Os testes de integração de protocolo em `src/test/java/market` usam JUnit 5;
+Os testes de integração de protocolo em `test/java/market` usam JUnit 5;
 este repositório não inclui um gerenciador de build nem as dependências de
 teste.
 
 ## Organização
 
-Cada módulo fica em uma pasta direta, sem a cadeia de diretórios `br/com/...`:
+Cada módulo fica em uma pasta direta sob `src/`:
 
 ```text
-src/main/java/
-├── app/       # Menu e interação com o usuário
+src/
+├── Main.java  # Ponto de entrada e menu da aplicação
+├── app/       # Formatação e leitura de terminal
 ├── domain/    # Entidades e regras financeiras
 ├── market/    # Protocolo TCP, cliente e servidor de cotações
 └── service/   # Gestão de clientes, aplicações e persistência
 
-src/test/java/
+test/java/
 ├── InvestmentSystemSelfTest.java
 ├── app/        # Testes autônomos de interação com o terminal
 └── market/    # Testes do protocolo de cotações

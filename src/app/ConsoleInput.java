@@ -9,15 +9,15 @@ import java.util.Scanner;
 import java.util.function.Function;
 
 /** Reúne leituras e validações de entrada usadas pelo terminal. */
-final class ConsoleInput {
+public final class ConsoleInput {
     private final Scanner scanner;
 
-    ConsoleInput(Scanner scanner) {
+    public ConsoleInput(Scanner scanner) {
         this.scanner = scanner;
     }
 
     /** Lê um campo sem exigir que tenha conteúdo. */
-    String readLine(String prompt) {
+    public String readLine(String prompt) {
         System.out.print(prompt);
         if (!scanner.hasNextLine()) {
             throw new EndOfInputException();
@@ -26,7 +26,7 @@ final class ConsoleInput {
     }
 
     /** Repete a leitura até receber um valor não vazio. */
-    String readRequired(String prompt) {
+    public String readRequired(String prompt) {
         while (true) {
             String value = readLine(prompt).trim();
             if (!value.isEmpty()) {
@@ -37,7 +37,7 @@ final class ConsoleInput {
     }
 
     /** Lê um inteiro dentro dos limites indicados. */
-    int readInt(String prompt, int min, int max) {
+    public int readInt(String prompt, int min, int max) {
         while (true) {
             try {
                 int value = Integer.parseInt(readLine(prompt).trim());
@@ -52,7 +52,7 @@ final class ConsoleInput {
     }
 
     /** Lê um inteiro longo dentro dos limites indicados. */
-    long readLong(String prompt, long min, long max) {
+    public long readLong(String prompt, long min, long max) {
         while (true) {
             try {
                 long value = Long.parseLong(readLine(prompt).trim());
@@ -67,7 +67,7 @@ final class ConsoleInput {
     }
 
     /** Lê um valor monetário positivo. */
-    BigDecimal readPositiveAmount(String prompt) {
+    public BigDecimal readPositiveAmount(String prompt) {
         while (true) {
             BigDecimal value = readDecimal(prompt);
             if (value.signum() > 0) {
@@ -78,7 +78,7 @@ final class ConsoleInput {
     }
 
     /** Lê uma taxa mensal entre zero e um, inclusive. */
-    BigDecimal readMonthlyRate() {
+    public BigDecimal readMonthlyRate() {
         while (true) {
             BigDecimal value = readDecimal("Taxa mensal entre 0 e 1 (ex.: 0,05 para 5%): ");
             if (value.signum() >= 0 && value.compareTo(BigDecimal.ONE) <= 0) {
@@ -101,7 +101,7 @@ final class ConsoleInput {
     }
 
     /** Lê uma data no formato ISO (AAAA-MM-DD). */
-    LocalDate readDate(String prompt) {
+    public LocalDate readDate(String prompt) {
         while (true) {
             try {
                 return LocalDate.parse(readLine(prompt).trim());
@@ -112,7 +112,7 @@ final class ConsoleInput {
     }
 
     /** Interpreta respostas afirmativas e negativas em português. */
-    boolean readYesNo(String prompt) {
+    public boolean readYesNo(String prompt) {
         while (true) {
             String answer = readLine(prompt).trim().toLowerCase();
             if (answer.equals("s") || answer.equals("sim")) {
@@ -126,12 +126,12 @@ final class ConsoleInput {
     }
 
     /** Lê um caminho local digitado pelo usuário. */
-    Path readPath(String prompt) {
+    public Path readPath(String prompt) {
         return Path.of(readRequired(prompt));
     }
 
     /** Lê uma opção por número, nome do enum ou descrição localizada. */
-    <E extends Enum<E>> E readEnumChoice(String field, E[] choices, Function<E, String> label) {
+    public <E extends Enum<E>> E readEnumChoice(String field, E[] choices, Function<E, String> label) {
         System.out.println(field + " — escolha pelo número ou nome:");
         for (int index = 0; index < choices.length; index++) {
             E choice = choices[index];
@@ -168,9 +168,9 @@ final class ConsoleInput {
     }
 
     /** Indica que a entrada padrão foi fechada. */
-    static final class EndOfInputException extends RuntimeException {
+    public static final class EndOfInputException extends RuntimeException {
         private static final long serialVersionUID = 1L;
 
-        private EndOfInputException() { }
+        public EndOfInputException() { }
     }
 }

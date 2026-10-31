@@ -9,11 +9,11 @@ import domain.YieldPeriod;
 import java.util.Arrays;
 
 /** Configura os termos de rendimento, resgate e tributação de uma aplicação. */
-final class InvestmentTerms {
+public final class InvestmentTerms {
     private InvestmentTerms() { }
 
     /** Solicita prazos e opções de rendimento para a aplicação. */
-    static void configure(Investment investment, ConsoleInput input) {
+    public static void configure(Investment investment, ConsoleInput input) {
         int maturityDays = input.readInt("Dias até o vencimento (0 = sem vencimento): ",
                 0, Integer.MAX_VALUE);
         investment.setMaturityDays(maturityDays);
