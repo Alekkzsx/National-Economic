@@ -1,4 +1,29 @@
-out/
-target/
-data/
+# Saídas de compilação e artefatos de build
 *.class
+**/*.class
+out/
+compilado/
+target/
+bin/
+build/
+
+# Base de dados persistente gerada em tempo de execução
+data/
+
+# Metadados e artefatos dos agentes de desenvolvimento
+.agents/
+
+# Configurações de ambientes e IDEs
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Arquivos temporários e do sistema operacional
+*.tmp
+*.bak
+*~
+.DS_Store
+Thumbs.db
