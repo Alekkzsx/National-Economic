@@ -40,7 +40,8 @@ import java.util.Set;
  * escapados para manter cada registro em uma única linha.</p>
  */
 final class ArmazenadorInvestimentos {
-    private static final String CABECALHO_ATUAL = "NATIONAL-ECONOMIC\t3";
+    private static final String CABECALHO_ATUAL = "NATIONAL-ECONOMIC\t4";
+    private static final String CABECALHO_VERSAO_3 = "NATIONAL-ECONOMIC\t3";
     private static final String CABECALHO_VERSAO_2 = "NATIONAL-ECONOMIC\t2";
     private static final String CABECALHO_VERSAO_1 = "NATIONAL-ECONOMIC\t1";
 
@@ -74,9 +75,10 @@ final class ArmazenadorInvestimentos {
         SistemaInvestimentos sistema = new SistemaInvestimentos();
         Map<String, AplicacaoFinanceira> aplicacoesPorNumero = new LinkedHashMap<>();
         Map<String, Integer> contagemOperacoes = new LinkedHashMap<>();
+        int versao;
 
         try (BufferedReader leitor = Files.newBufferedReader(caminho, StandardCharsets.UTF_8)) {
-            int versao = lerVersao(leitor.readLine());
+            versao = lerVersao(leitor.readLine());
             String linha;
             int numeroLinha = 1;
 
@@ -97,8 +99,27 @@ final class ArmazenadorInvestimentos {
             }
         }
 
+        if (versao < 4) {
+            restaurarTotalResgatadoLegado(sistema);
+        }
         validarContagemOperacoes(sistema, contagemOperacoes);
         return sistema;
+    }
+
+    /**
+     * Reconstrói o total de retiradas para arquivos antigos que não o armazenavam.
+     */
+    private static void restaurarTotalResgatadoLegado(SistemaInvestimentos sistema) {
+        for (ContaCliente cliente : sistema.listarClientes()) {
+            String cpf = cliente.getDadosPessoais().getCpf();
+            for (AplicacaoFinanceira aplicacao : cliente.listarAplicacoes()) {
+                BigDecimal totalRetirado = sistema.listarOperacoes(cpf, aplicacao.getNumero()).stream()
+                        .filter(operacao -> operacao.tipo() == TipoOperacao.WITHDRAWAL)
+                        .map(OperacaoFinanceira::valor)
+                        .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+                aplicacao.setValorResgatado(totalRetirado);
+            }
+        }
     }
 
     private static void gravarArquivo(
@@ -162,7 +183,8 @@ final class ArmazenadorInvestimentos {
                 aplicacao.getOpcaoIOF().name(),
                 aplicacao.getOpcaoIR().name(),
                 aplicacao.getRendimentosPendentes().toPlainString(),
-                Integer.toString(aplicacao.getDiasDesdeRendimento())
+                Integer.toString(aplicacao.getDiasDesdeRendimento()),
+                aplicacao.getValorResgatado().toPlainString()
         );
     }
 
@@ -290,6 +312,9 @@ final class ArmazenadorInvestimentos {
                 new BigDecimal(campos.get(21)),
                 Integer.parseInt(campos.get(22))
         );
+        if (versao >= 4) {
+            aplicacao.setValorResgatado(new BigDecimal(campos.get(23)));
+        }
     }
 
     private static void lerOperacao(
@@ -340,8 +365,11 @@ final class ArmazenadorInvestimentos {
         if (CABECALHO_VERSAO_2.equals(cabecalho)) {
             return 2;
         }
-        if (CABECALHO_ATUAL.equals(cabecalho)) {
+        if (CABECALHO_VERSAO_3.equals(cabecalho)) {
             return 3;
+        }
+        if (CABECALHO_ATUAL.equals(cabecalho)) {
+            return 4;
         }
         throw new IOException("Formato de arquivo desconhecido ou versão incompatível.");
     }
@@ -351,6 +379,7 @@ final class ArmazenadorInvestimentos {
             case 1 -> 15;
             case 2 -> 21;
             case 3 -> 23;
+            case 4 -> 24;
             default -> throw new IllegalArgumentException("Versão inválida.");
         };
     }

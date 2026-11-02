@@ -59,6 +59,8 @@ public class AplicacaoFinanceira {
     private int diasDesdeRendimento;
     /** Quantidade de operações já registradas na aplicação. */
     private int quantidadeOperacoes;
+    /** Total histórico das retiradas confirmadas. */
+    private BigDecimal valorResgatado = Moeda.ZERO;
 
     /** Cria uma aplicação com início na data corrente. */
     public AplicacaoFinanceira(String nome, String numero, BigDecimal valorInicial, BigDecimal taxaMensal) {
@@ -115,6 +117,8 @@ public class AplicacaoFinanceira {
     public int getDiasEfetivos() { return diasEfetivos; }
     /** Retorna a quantidade de operações registradas. */
     public int getQuantidadeOperacoes() { return quantidadeOperacoes; }
+    /** Retorna o total histórico das retiradas realizadas. */
+    public BigDecimal getValorResgatado() { return valorResgatado; }
     /** Retorna os rendimentos que ainda aguardam crédito. */
     public BigDecimal getRendimentosPendentes() { return rendimentosPendentes; }
     /** Retorna os dias acumulados desde o último crédito de rendimento. */
@@ -352,8 +356,50 @@ public class AplicacaoFinanceira {
             }
             if (valor.compareTo(saldo) > 0) throw new IllegalArgumentException("Saldo insuficiente.");
             saldo = Moeda.arredondar(saldo.subtract(valor));
+            valorResgatado = Moeda.arredondar(valorResgatado.add(valor));
         }
         quantidadeOperacoes++;
+    }
+
+    /**
+     * Reverte os efeitos patrimoniais de uma operação já registrada.
+     *
+     * <p>A remoção de um depósito é recusada se os recursos correspondentes
+     * já não estiverem disponíveis no saldo. A retirada revertida recompõe o
+     * saldo e o total histórico resgatado.</p>
+     *
+     * @param operacao operação cujos efeitos serão desfeitos
+     * @throws IllegalArgumentException se desfazer o depósito tornaria o saldo negativo
+     * @throws IllegalStateException se não houver operação contabilizada
+     */
+    public void reverter(OperacaoFinanceira operacao) {
+        Objects.requireNonNull(operacao, "Operação obrigatória.");
+        if (quantidadeOperacoes <= 0) {
+            throw new IllegalStateException("Não há operações contabilizadas para reverter.");
+        }
+
+        BigDecimal novoSaldo;
+        if (operacao.tipo() == TipoOperacao.DEPOSIT) {
+            novoSaldo = saldo.subtract(operacao.valor());
+            if (novoSaldo.signum() < 0) {
+                throw new IllegalArgumentException(
+                        "Não é possível remover o depósito: parte do valor já foi utilizada.");
+            }
+        } else {
+            novoSaldo = saldo.add(operacao.valor());
+            valorResgatado = Moeda.naoNegativo(
+                    valorResgatado.subtract(operacao.valor()),
+                    "Total de resgates"
+            );
+        }
+
+        saldo = Moeda.arredondar(novoSaldo);
+        quantidadeOperacoes--;
+    }
+
+    /** Restaura o total histórico de retiradas recuperado do arquivo. */
+    public void setValorResgatado(BigDecimal valorResgatado) {
+        this.valorResgatado = Moeda.naoNegativo(valorResgatado, "Total de resgates");
     }
 
     /**

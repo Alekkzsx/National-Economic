@@ -393,7 +393,7 @@ public class AplicacaoFinanceira {
         }
 
         LocalDate cursor = (this.dataUltimaAtualizacao == null)
-                ? this.dataAplicacao
+                ? this.dataAplicacao.plusDays(1)
                 : this.dataUltimaAtualizacao.plusDays(1);
 
         while (!cursor.isAfter(dataReferencia)) {
@@ -912,12 +912,65 @@ public class AplicacaoFinanceira {
     }
 
     /**
+     * Retorna a parcela dos rendimentos já incorporada ao saldo.
+     *
+     * @return rendimentos creditados
+     */
+    public BigDecimal getRendimentosCreditados() {
+        return rendimentosCreditados;
+    }
+
+    /**
+     * Retorna os rendimentos apurados que ainda aguardam a data de crédito.
+     *
+     * @return rendimentos pendentes
+     */
+    public BigDecimal getRendimentosPendentes() {
+        return rendimentosPendentes;
+    }
+
+    /**
+     * Retorna quantos dias corridos passaram desde o último crédito de rendimento.
+     *
+     * @return dias acumulados no ciclo de capitalização atual
+     */
+    public int getDiasDesdeUltimoRendimento() {
+        return diasDesdeUltimoRendimento;
+    }
+
+    /**
      * Define o saldo base creditado e recalcula a posição patrimonial.
      *
      * @param saldo novo saldo base
      */
     public void setSaldo(BigDecimal saldo) {
         this.saldo = (saldo == null) ? BigDecimal.ZERO : Moeda.arredondar(saldo);
+        recalcularPosicaoInterno();
+    }
+
+    /**
+     * Restaura os acumuladores internos necessários para continuar os cálculos
+     * exatamente do ponto em que a aplicação foi persistida.
+     *
+     * @param saldo saldo-base já creditado
+     * @param rendimentosCreditados rendimentos incorporados ao saldo
+     * @param rendimentosPendentes rendimentos aguardando a próxima data de crédito
+     * @param diasDesdeUltimoRendimento dias corridos do ciclo de capitalização atual
+     * @throws IllegalArgumentException se algum valor for negativo ou o contador for inválido
+     */
+    public void restaurarAcumuladores(
+            BigDecimal saldo,
+            BigDecimal rendimentosCreditados,
+            BigDecimal rendimentosPendentes,
+            int diasDesdeUltimoRendimento
+    ) {
+        if (diasDesdeUltimoRendimento < 0) {
+            throw new IllegalArgumentException("Dias desde o último rendimento não podem ser negativos.");
+        }
+        this.saldo = Moeda.naoNegativo(saldo, "Saldo");
+        this.rendimentosCreditados = Moeda.naoNegativo(rendimentosCreditados, "Rendimentos creditados");
+        this.rendimentosPendentes = Moeda.naoNegativo(rendimentosPendentes, "Rendimentos pendentes");
+        this.diasDesdeUltimoRendimento = diasDesdeUltimoRendimento;
         recalcularPosicaoInterno();
     }
 

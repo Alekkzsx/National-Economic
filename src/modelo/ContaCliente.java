@@ -49,6 +49,19 @@ public class ContaCliente {
         investments.add(aplicacao);
     }
 
+    /**
+     * Remove a aplicação identificada pelo número e retorna a instância removida.
+     *
+     * @param numero identificador da aplicação
+     * @return aplicação removida
+     * @throws IllegalArgumentException se a aplicação não pertencer ao cliente
+     */
+    public AplicacaoFinanceira removerAplicacao(String numero) {
+        AplicacaoFinanceira aplicacao = exigirAplicacao(numero);
+        investments.remove(aplicacao);
+        return aplicacao;
+    }
+
     /** Procura a aplicação pelo número e retorna vazio quando não há correspondência. */
     public Optional<AplicacaoFinanceira> buscarAplicacao(String numero) {
         if (numero == null) return Optional.empty();

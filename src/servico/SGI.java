@@ -210,6 +210,19 @@ public class SGI {
         return Collections.unmodifiableList(new ArrayList<>(clientes.values()));
     }
 
+    /** Atualiza nome e celular sem alterar o CPF que identifica a conta. */
+    public synchronized void alterarCliente(String cpf, String nome, String celular) {
+        requererCliente(cpf).getDadosPessoais().alterarDados(nome, celular);
+    }
+
+    /** Exclui um cliente e todas as aplicações e operações vinculadas. */
+    public synchronized void excluirCliente(String cpf) {
+        String chave = normalizarCpf(cpf);
+        if (clientes.remove(chave) == null) {
+            throw new IllegalArgumentException("Cliente não encontrado para o CPF informado.");
+        }
+    }
+
     // =========================================================================
     // Gestão de Aplicações Financeiras e Operações (Item 7, R3.1)
     // =========================================================================
@@ -282,6 +295,47 @@ public class SGI {
      */
     public synchronized List<MultiplasOperacoesFinanceiras> getAplicacoes(String cpf) {
         return requererCliente(cpf).getAplicacoes();
+    }
+
+    /** Altera os campos descritivos de uma aplicação sem modificar seu histórico financeiro. */
+    public synchronized void alterarAplicacao(
+            String cpf,
+            String numeroAplicacao,
+            String nome,
+            BigDecimal taxaMensal
+    ) {
+        if (nome == null || nome.isBlank()) {
+            throw new IllegalArgumentException("Nome da aplicação é obrigatório.");
+        }
+        Objects.requireNonNull(taxaMensal, "Taxa mensal é obrigatória.");
+        if (taxaMensal.signum() < 0 || taxaMensal.compareTo(BigDecimal.ONE) > 0) {
+            throw new IllegalArgumentException("A taxa mensal deve estar entre zero e um.");
+        }
+        MultiplasOperacoesFinanceiras carteira =
+                requererCliente(cpf).requererAplicacao(numeroAplicacao);
+        carteira.getAplicacao().setNomeAplicacao(nome);
+        carteira.getAplicacao().setTaxaMensal(taxaMensal);
+    }
+
+    /** Exclui uma aplicação da carteira do titular. */
+    public synchronized void excluirAplicacao(String cpf, String numeroAplicacao) {
+        requererCliente(cpf).removerAplicacao(numeroAplicacao);
+    }
+
+    /** Substitui um lançamento e valida novamente o saldo e as regras da aplicação. */
+    public synchronized void alterarOperacao(
+            String cpf,
+            String numeroAplicacao,
+            int indice,
+            OperacaoFinanceira novaOperacao
+    ) {
+        Objects.requireNonNull(novaOperacao, "Nova operação é obrigatória.");
+        requererCliente(cpf).requererAplicacao(numeroAplicacao).alterarOperacao(indice, novaOperacao);
+    }
+
+    /** Exclui um lançamento e reconstrói o saldo sem seu efeito financeiro. */
+    public synchronized void excluirOperacao(String cpf, String numeroAplicacao, int indice) {
+        requererCliente(cpf).requererAplicacao(numeroAplicacao).alterarOperacao(indice, null);
     }
 
     /**

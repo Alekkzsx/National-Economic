@@ -2,38 +2,46 @@ package mercado;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
-/** Ponto de entrada do servidor; os valores padrão são configuração, não dados ao vivo. */
+/** Inicia o servidor com taxas locais e cotações cambiais oficiais do Banco Central. */
 public final class PrincipalServidorCotacoes {
-    private static final int DEFAULT_PORT = 5050;
-    private static final String DEFAULT_QUOTE = "0.00";
+    private static final int PORTA_PADRAO = 5050;
 
     private PrincipalServidorCotacoes() {}
 
     /**
-     * Uso: {@code PrincipalServidorCotacoes [porta [SELICRA CDIR USD EUR]]}.
-     * USD e EUR são informados manualmente; não há integração com dados de mercado.
+     * Uso: {@code PrincipalServidorCotacoes [porta] SELICRA CDIR}.
+     *
+     * <p>As taxas SELICRA e CDIR são informadas na inicialização; USD e EUR
+     * são obtidos do serviço PTAX oficial do Banco Central.</p>
      */
     public static void main(String[] args) throws IOException, InterruptedException {
-        if (args.length != 0 && args.length != 1 && args.length != 5) {
+        if (args.length != 2 && args.length != 3) {
             throw new IllegalArgumentException(
-                    "Uso: PrincipalServidorCotacoes [porta [SELICRA CDIR USD EUR]]");
+                    "Uso: PrincipalServidorCotacoes [porta] SELICRA CDIR");
         }
 
-        int porta = args.length == 0 ? DEFAULT_PORT : Integer.parseInt(args[0]);
-        BigDecimal[] cotacoes = interpretarCotacoes(args);
-        ServidorCotacoes server = new ServidorCotacoes(porta, cotacoes[0], cotacoes[1], cotacoes[2], cotacoes[3]);
+        int deslocamentoTaxas = args.length == 3 ? 1 : 0;
+        int porta = args.length == 3 ? Integer.parseInt(args[0]) : PORTA_PADRAO;
+        BigDecimal selicra = new BigDecimal(args[deslocamentoTaxas]);
+        BigDecimal cdir = new BigDecimal(args[deslocamentoTaxas + 1]);
+        Map<String, BigDecimal> cotacoes = new LinkedHashMap<>(
+                new ProvedorCotacoesBancoCentral().obterCotacoes()
+        );
+        cotacoes.put("SELICRA", selicra);
+        cotacoes.put("CDIR", cdir);
+
+        ServidorCotacoes server = new ServidorCotacoes(porta, cotacoes);
         server.start();
 
         System.out.println("Servidor de cotações ativo na porta " + server.getPorta() + ".");
-        System.out.println("Configuração estática: SELICRA=" + cotacoes[0].toPlainString()
-                + ", CDIR=" + cotacoes[1].toPlainString()
-                + ", USD=" + cotacoes[2].toPlainString()
-                + ", EUR=" + cotacoes[3].toPlainString() + ".");
-        if (args.length < 5) {
-            System.out.println("Defaults em 0.00; USD/EUR são configuração manual, sem dados ao vivo.");
-        }
+        System.out.println("Cotações ativas: SELICRA=" + selicra.toPlainString()
+                + ", CDIR=" + cdir.toPlainString()
+                + ", USD=" + cotacoes.get("USD").toPlainString()
+                + ", EUR=" + cotacoes.get("EUR").toPlainString() + ".");
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> encerrarServidor(server),
                 "mercado-shutdown"));
@@ -42,14 +50,6 @@ public final class PrincipalServidorCotacoes {
         } finally {
             server.close();
         }
-    }
-
-    private static BigDecimal[] interpretarCotacoes(String[] args) {
-        BigDecimal[] cotacoes = new BigDecimal[4];
-        for (int i = 0; i < cotacoes.length; i++) {
-            cotacoes[i] = new BigDecimal(args.length == 5 ? args[i + 1] : DEFAULT_QUOTE);
-        }
-        return cotacoes;
     }
 
     private static void encerrarServidor(ServidorCotacoes server) {

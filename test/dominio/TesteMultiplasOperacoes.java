@@ -3,9 +3,11 @@ package test.dominio;
 import static test.Afirmacao.*;
 
 import dominio.AplicacaoFinanceira;
+import dominio.ConvencaoContagemDias;
 import dominio.DiaSemana;
 import dominio.MultiplasOperacoesFinanceiras;
 import dominio.OperacaoFinanceira;
+import dominio.RegimeTributario;
 import dominio.TipoOperacao;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -40,8 +42,10 @@ public final class TesteMultiplasOperacoes {
         testarAtualizarAplicacaoFimDeSemanaNoOp(); testesExecutados++;
         testarAtualizarAplicacaoDiaUtilEvolucao(); testesExecutados++;
         testarExtrato30Dias(); testesExecutados++;
+        testarJanelaDeExatamenteTrintaDias(); testesExecutados++;
         testarExtratoPeriodoPolimorfico(); testesExecutados++;
         testarPersistenciaArquivoSalvarELerDados(); testesExecutados++;
+        testarPersistenciaPreservaCicloDeRendimento(); testesExecutados++;
         testarHerancaSeguraESobrescritaToString(); testesExecutados++;
 
         long duracao = System.currentTimeMillis() - inicio;
@@ -235,7 +239,8 @@ public final class TesteMultiplasOperacoes {
         // Atualiza para Terça-feira (2026-08-04) - dia útil
         mof.atualizarAplicacao(LocalDate.of(2026, 8, 4));
         afirmarVerdadeiro(mof.getSaldoBruto().compareTo(saldoInicial) > 0, "saldo bruto evoluiu em dia útil");
-        afirmarIgual(2, terminal.getDiasEfetivosCalculo(), "dois dias úteis efetivos computados (segunda e terça)");
+        afirmarIgual(1, terminal.getDiasEfetivosCalculo(),
+                "somente a terça-feira é dia útil efetivo; o cadastro é dia zero");
     }
 
     public static void testarExtrato30Dias() {
@@ -254,6 +259,25 @@ public final class TesteMultiplasOperacoes {
         List<OperacaoFinanceira> extrato30d = mof.getExtrato();
         afirmarIgual(1, extrato30d.size(), "extrato 30 dias contém apenas a operação recente");
         afirmarIgual("Recente", extrato30d.get(0).getDescricao(), "descrição da operação recente bate");
+    }
+
+    /** Confere as duas extremidades inclusivas de uma janela de trinta datas civis. */
+    public static void testarJanelaDeExatamenteTrintaDias() {
+        LocalDate dataFinal = LocalDate.of(2026, 8, 31);
+        AplicacaoFinanceira aplicacao = criarAplicacaoPadrao(LocalDate.of(2026, 6, 1));
+        MultiplasOperacoesFinanceiras agregacao =
+                new MultiplasOperacoesFinanceiras(aplicacao, new DiaSemana(dataFinal));
+        agregacao.adicionarOperacao(new OperacaoFinanceira(
+                dataFinal.minusDays(30), new BigDecimal("1.00"), "Fora da janela", TipoOperacao.DEPOSITO));
+        agregacao.adicionarOperacao(new OperacaoFinanceira(
+                dataFinal.minusDays(29), new BigDecimal("1.00"), "Primeiro dia", TipoOperacao.DEPOSITO));
+        agregacao.adicionarOperacao(new OperacaoFinanceira(
+                dataFinal, new BigDecimal("1.00"), "Último dia", TipoOperacao.DEPOSITO));
+
+        List<OperacaoFinanceira> extrato = agregacao.getExtrato(dataFinal);
+        afirmarIgual(2, extrato.size(), "a janela inclui exatamente trinta datas civis");
+        afirmarIgual("Primeiro dia", extrato.getFirst().getDescricao(),
+                "a data inicial inclusiva é exatamente 29 dias antes da final");
     }
 
     public static void testarExtratoPeriodoPolimorfico() {
@@ -308,6 +332,60 @@ public final class TesteMultiplasOperacoes {
             try {
                 Files.deleteIfExists(tempFile);
             } catch (IOException ignored) {}
+        }
+
+    }
+
+    /** Confere que a persistência mantém o ciclo de rendimento para atualizações futuras. */
+    public static void testarPersistenciaPreservaCicloDeRendimento() {
+        LocalDate inicio = LocalDate.of(2026, 8, 3);
+        AplicacaoFinanceira aplicacao = new AplicacaoFinanceira(
+                "Aplicação mensal", "APP-CICLO",
+                new BigDecimal("1000.00"), new BigDecimal("0.03"),
+                1, 0, 0, 0, 0, 0, inicio
+        );
+        aplicacao.setConvencaoContagemDias(ConvencaoContagemDias.CIVIL_365);
+        aplicacao.setRegimeTributario(RegimeTributario.ISENTO);
+        MultiplasOperacoesFinanceiras original = new MultiplasOperacoesFinanceiras(aplicacao);
+        original.atualizarAplicacao(inicio.plusDays(3));
+
+        Path arquivo = Path.of("data/teste_mof_ciclo_temp.db");
+        try {
+            original.arquivoSalvarDados(arquivo);
+            MultiplasOperacoesFinanceiras restaurada =
+                    MultiplasOperacoesFinanceiras.arquivoLerDados(arquivo);
+            afirmarIgual(aplicacao.getRendimentosCreditados(),
+                    restaurada.getAplicacao().getRendimentosCreditados(),
+                    "rendimentos creditados são restaurados");
+            afirmarIgual(aplicacao.getRendimentosPendentes(),
+                    restaurada.getAplicacao().getRendimentosPendentes(),
+                    "rendimentos pendentes são restaurados");
+            afirmarIgual(aplicacao.getDiasDesdeUltimoRendimento(),
+                    restaurada.getAplicacao().getDiasDesdeUltimoRendimento(),
+                    "contador do ciclo de rendimento é restaurado");
+            afirmarIgual(ConvencaoContagemDias.CIVIL_365,
+                    restaurada.getAplicacao().getConvencaoContagemDias(),
+                    "convenção de dias é restaurada");
+            afirmarIgual(RegimeTributario.ISENTO,
+                    restaurada.getAplicacao().getRegimeTributario(),
+                    "regime tributário é restaurado");
+
+            LocalDate proximaAtualizacao = inicio.plusDays(4);
+            original.atualizarAplicacao(proximaAtualizacao);
+            restaurada.atualizarAplicacao(proximaAtualizacao);
+            afirmarIgual(original.getSaldoBruto(), restaurada.getSaldoBruto(),
+                    "as duas instâncias evoluem com o mesmo saldo após a restauração");
+            afirmarIgual(original.getAplicacao().getRendimentosPendentes(),
+                    restaurada.getAplicacao().getRendimentosPendentes(),
+                    "as duas instâncias mantêm o mesmo rendimento pendente após atualizar");
+        } catch (IOException excecao) {
+            throw new AssertionError("Falha ao validar a restauração do ciclo de rendimento.", excecao);
+        } finally {
+            try {
+                Files.deleteIfExists(arquivo);
+            } catch (IOException excecao) {
+                throw new AssertionError("Falha ao remover o arquivo de teste.", excecao);
+            }
         }
     }
 

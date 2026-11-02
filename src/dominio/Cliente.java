@@ -245,6 +245,18 @@ public class Cliente {
     }
 
     /**
+     * Remove uma aplicação da carteira pelo identificador único.
+     *
+     * @param numeroAplicacao identificador da aplicação a remover
+     * @return carteira removida
+     */
+    public MultiplasOperacoesFinanceiras removerAplicacao(String numeroAplicacao) {
+        MultiplasOperacoesFinanceiras aplicacao = requererAplicacao(numeroAplicacao);
+        aplicacoes.remove(aplicacao);
+        return aplicacao;
+    }
+
+    /**
      * Localiza uma aplicação pelo seu número identificador no âmbito do cliente.
      *
      * @param numeroAplicacao identificador único da aplicação buscada

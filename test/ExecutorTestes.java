@@ -47,6 +47,7 @@ public final class ExecutorTestes {
             "test.dominio.TesteDadosPessoais",
             "test.dominio.TesteCliente",
             "test.servico.TesteSGI",
+            "mercado.TesteProvedorCotacoesBancoCentral",
             "TesteSistemaInvestimentos",
             "terminal.TesteEntradaTerminal"
         };

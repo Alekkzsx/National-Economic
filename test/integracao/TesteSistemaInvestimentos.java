@@ -101,6 +101,7 @@ public final class TesteSistemaInvestimentos {
                 new OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("5"), "Aporte", TipoOperacao.DEPOSIT));
         check(sistema.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
                 LocalDate.of(2026, 1, 2)).size() == 1, "extrato inclusivo");
+        testarOperacoesCrud();
 
         // Salva e restaura todos os dados, inclusive o estado do ciclo de rendimento.
         Path arquivo = Path.of(".aplicacao-sistema-self-test.tsv");
@@ -121,6 +122,8 @@ public final class TesteSistemaInvestimentos {
             check(restoredInvestment.getOpcaoIOF() == OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS,
                     "opção IOF restaurada");
             check(restoredInvestment.getOpcaoIR() == OpcaoIR.EXEMPT, "opção IR restaurada");
+            check(restoredInvestment.getValorResgatado().compareTo(aplicacao.getValorResgatado()) == 0,
+                    "total resgatado restaurado");
             check(restoredInvestment.getRendimentosPendentes().compareTo(aplicacao.getRendimentosPendentes()) == 0,
                     "rendimento pendente restaurado");
             check(restoredInvestment.getDiasDesdeRendimento() == aplicacao.getDiasDesdeRendimento(),
@@ -287,6 +290,71 @@ public final class TesteSistemaInvestimentos {
         } finally {
             Files.deleteIfExists(invalidHistoryFile);
         }
+    }
+
+    /** Valida atualização e exclusão de clientes, aplicações e lançamentos financeiros. */
+    private static void testarOperacoesCrud() {
+        SistemaInvestimentos sistema = new SistemaInvestimentos();
+        DadosPessoais dados = new DadosPessoais("Cliente CRUD", "52998224725", "11987654321");
+        sistema.cadastrarCliente(dados, 12, 3456);
+        AplicacaoFinanceira aplicacao = new AplicacaoFinanceira(
+                "Reserva", "CRUD-1", new BigDecimal("100.00"), BigDecimal.ZERO,
+                LocalDate.of(2026, 1, 1));
+        sistema.cadastrarAplicacao(dados.getCpf(), aplicacao);
+
+        sistema.alterarDadosCliente(dados.getCpf(), "Cliente Atualizado", "11999998888");
+        check(dados.getNome().equals("Cliente Atualizado"), "dados pessoais do cliente atualizados");
+
+        sistema.alterarAplicacao(dados.getCpf(), "CRUD-1", "Reserva Atualizada", new BigDecimal("0.01"));
+        check(aplicacao.getNome().equals("Reserva Atualizada"), "nome da aplicação atualizado");
+        check(aplicacao.getTaxaMensal().compareTo(new BigDecimal("0.01")) == 0,
+                "taxa mensal da aplicação atualizada");
+
+        sistema.registrarOperacao(dados.getCpf(), "CRUD-1", new OperacaoFinanceira(
+                LocalDate.of(2026, 1, 2), new BigDecimal("20.00"), "Depósito", TipoOperacao.DEPOSIT));
+        sistema.registrarOperacao(dados.getCpf(), "CRUD-1", new OperacaoFinanceira(
+                LocalDate.of(2026, 1, 2), new BigDecimal("5.00"), "Retirada", TipoOperacao.WITHDRAWAL));
+        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("115.00")) == 0,
+                "operações alteram o saldo e registram retiradas");
+        check(aplicacao.getValorResgatado().compareTo(new BigDecimal("5.00")) == 0,
+                "total de retiradas é contabilizado");
+
+        boolean edicaoInvalidaRevertida = false;
+        try {
+            sistema.alterarOperacao(dados.getCpf(), "CRUD-1", 0, new OperacaoFinanceira(
+                    LocalDate.of(2026, 1, 2), new BigDecimal("1000.00"), "Retirada inválida",
+                    TipoOperacao.WITHDRAWAL));
+        } catch (IllegalArgumentException esperada) {
+            edicaoInvalidaRevertida = true;
+        }
+        check(edicaoInvalidaRevertida, "edição financeira inválida é rejeitada");
+        check(sistema.listarOperacoes(dados.getCpf(), "CRUD-1").getFirst().descricao().equals("Depósito"),
+                "edição inválida preserva o lançamento original");
+        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("115.00")) == 0,
+                "edição inválida restaura o saldo original");
+
+        sistema.alterarOperacao(dados.getCpf(), "CRUD-1", 0, new OperacaoFinanceira(
+                LocalDate.of(2026, 1, 2), new BigDecimal("30.00"), "Depósito corrigido", TipoOperacao.DEPOSIT));
+        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("125.00")) == 0,
+                "edição válida recalcula o efeito do lançamento");
+        sistema.excluirOperacao(dados.getCpf(), "CRUD-1", 1);
+        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("130.00")) == 0,
+                "exclusão da retirada recompõe o saldo");
+        check(aplicacao.getValorResgatado().signum() == 0, "exclusão da retirada ajusta o total resgatado");
+        sistema.excluirOperacao(dados.getCpf(), "CRUD-1", 0);
+        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("100.00")) == 0,
+                "exclusão do depósito reverte seu efeito financeiro");
+
+        sistema.excluirAplicacao(dados.getCpf(), "CRUD-1");
+        check(sistema.listarAplicacoes(dados.getCpf()).isEmpty(), "aplicação excluída da carteira");
+        AplicacaoFinanceira novaAplicacao = new AplicacaoFinanceira(
+                "Nova reserva", "CRUD-1", new BigDecimal("50.00"), BigDecimal.ZERO,
+                LocalDate.of(2026, 1, 1));
+        sistema.cadastrarAplicacao(dados.getCpf(), novaAplicacao);
+        check(sistema.listarOperacoes(dados.getCpf(), "CRUD-1").isEmpty(),
+                "nova aplicação não herda operações da aplicação excluída");
+        sistema.excluirCliente(dados.getCpf());
+        check(sistema.listarClientes().isEmpty(), "cliente e carteira removidos do SGI");
     }
 
     /** Falha imediatamente com uma mensagem curta quando uma expectativa não se cumpre. */

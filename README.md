@@ -36,13 +36,23 @@ o programa estiver em execução.
 Em outro terminal, execute:
 
 ```sh
-java -cp compilado mercado.PrincipalServidorCotacoes 5050 10.50 1.25 5.10 5.55
+java -cp compilado mercado.PrincipalServidorCotacoes 5050 10.50 1.25
 ```
 
-Argumentos: `porta SELICRA CDIR USD EUR`. Sem argumentos, a porta padrão é
-5050 e os valores padrão são `0.00`. As cotações são configuradas localmente;
-não são cotações financeiras em tempo real. O cliente envia `GET_QUOTES` e
-recebe uma resposta em uma linha com `SELICRA`, `CDIR`, `USD` e `EUR`.
+Argumentos: `porta SELICRA CDIR`; a porta pode ser omitida, mantendo o padrão
+5050. As taxas SELICRA e CDIR são configuradas no início do servidor. As
+cotações de venda de dólar e euro são consultadas no serviço PTAX do Banco
+Central do Brasil; em fins de semana e feriados, usa-se a observação mais
+recente publicada pelo Banco Central. Se o serviço estiver indisponível ou não
+retornar uma cotação válida, o servidor informa o erro e não inicia com valores
+fictícios. O cliente envia `GET_QUOTES` e recebe uma resposta em uma linha com
+`SELICRA`, `CDIR`, `USD` e `EUR`.
+
+O menu permite cadastrar, consultar, alterar e excluir clientes, aplicações e
+operações. A exclusão de clientes e aplicações remove também os dados e
+lançamentos vinculados; a exclusão de uma operação reverte seu efeito no saldo.
+O item “Listar clientes e aplicações” exibe a carteira completa em uma única
+consulta.
 
 No cadastro de uma aplicação, escolha os termos padrão ou configure
 periodicidade de rendimento, vencimento, permanência mínima, frequência de

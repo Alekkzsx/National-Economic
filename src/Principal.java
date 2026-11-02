@@ -125,6 +125,13 @@ public final class Principal {
             case "12" -> carregarEstado();
             case "13" -> salvarEstado();
             case "14" -> exibirCotacoes();
+            case "15" -> listarClientesEAplicacoes();
+            case "16" -> alterarCliente();
+            case "17" -> excluirCliente();
+            case "18" -> alterarAplicacao();
+            case "19" -> excluirAplicacao();
+            case "20" -> alterarOperacao();
+            case "21" -> excluirOperacao();
             case "0" -> {
                 return false;
             }
@@ -162,6 +169,13 @@ public final class Principal {
                 12. Carregar estado de arquivo
                 13. Salvar estado em arquivo
                 14. Consultar cotações do servidor
+                15. Listar clientes e aplicações
+                16. Alterar dados de cliente
+                17. Excluir cliente e dados vinculados
+                18. Alterar nome ou taxa de aplicação
+                19. Excluir aplicação e operações vinculadas
+                20. Alterar operação financeira
+                21. Excluir operação financeira
                 0. Salvar e sair
                 """);
     }
@@ -194,6 +208,60 @@ public final class Principal {
             DadosPessoais dados = cliente.getDadosPessoais();
             System.out.printf("- %s | CPF: %s%n", dados.getNome(), FormatadorTerminal.mascararCpf(dados.getCpf()));
         }
+    }
+
+    /** Lista cada cliente junto das aplicações que compõem sua carteira. */
+    private void listarClientesEAplicacoes() {
+        List<ContaCliente> clientes = sistema.listarClientes();
+        if (clientes.isEmpty()) {
+            System.out.println("Não há clientes cadastrados.");
+            return;
+        }
+        for (ContaCliente cliente : clientes) {
+            DadosPessoais dados = cliente.getDadosPessoais();
+            System.out.printf("%s | CPF: %s | Agência/conta: %d/%d%n",
+                    dados.getNome(),
+                    FormatadorTerminal.mascararCpf(dados.getCpf()),
+                    cliente.getNumeroAgencia(),
+                    cliente.getNumeroConta());
+            List<AplicacaoFinanceira> aplicacoes = cliente.listarAplicacoes();
+            if (aplicacoes.isEmpty()) {
+                System.out.println("  (sem aplicações cadastradas)");
+                continue;
+            }
+            for (AplicacaoFinanceira aplicacao : aplicacoes) {
+                System.out.printf("  - %s | número: %s | saldo: %s%n",
+                        aplicacao.getNome(),
+                        aplicacao.getNumero(),
+                        FormatadorTerminal.formatarMoeda(aplicacao.getSaldoLiquido()));
+            }
+        }
+    }
+
+    /** Altera o nome e o celular do cliente, preservando o CPF como identificador. */
+    private void alterarCliente() {
+        String cpf = lerIdentificadorCliente();
+        ContaCliente cliente = sistema.buscarCliente(cpf)
+                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado."));
+        String nome = entrada.lerObrigatorio("Novo nome completo: ");
+        String celular = entrada.lerObrigatorio("Novo celular (com DDD): ");
+        sistema.alterarDadosCliente(cpf, nome, celular);
+        System.out.println("Dados do cliente " + FormatadorTerminal.mascararCpf(cliente.getDadosPessoais().getCpf())
+                + " atualizados com sucesso.");
+    }
+
+    /** Exclui o cliente e a carteira inteira após confirmação explícita. */
+    private void excluirCliente() {
+        String cpf = lerIdentificadorCliente();
+        ContaCliente cliente = sistema.buscarCliente(cpf)
+                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado."));
+        if (!entrada.lerSimNao("Excluir cliente e todas as aplicações vinculadas? (s/n): ")) {
+            System.out.println("Exclusão cancelada.");
+            return;
+        }
+        sistema.excluirCliente(cpf);
+        System.out.println("Cliente " + FormatadorTerminal.mascararCpf(cliente.getDadosPessoais().getCpf())
+                + " e seus dados vinculados foram excluídos.");
     }
 
     /** Consulta os dados cadastrais e o saldo consolidado de um cliente. */
@@ -259,6 +327,86 @@ public final class Principal {
                     FormatadorTerminal.formatarMoeda(aplicacao.getValorInicial()),
                     aplicacao.getTaxaMensal());
         }
+    }
+
+    /** Altera os campos descritivos de uma aplicação sem apagar seu histórico. */
+    private void alterarAplicacao() {
+        String cpf = lerIdentificadorCliente();
+        String numero = lerIdentificadorAplicacao();
+        String nome = entrada.lerObrigatorio("Novo nome da aplicação: ");
+        BigDecimal taxaMensal = entrada.lerTaxaMensal();
+        sistema.alterarAplicacao(cpf, numero, nome, taxaMensal);
+        System.out.println("Aplicação atualizada com sucesso.");
+    }
+
+    /** Exclui uma aplicação e todos os lançamentos associados após confirmação. */
+    private void excluirAplicacao() {
+        String cpf = lerIdentificadorCliente();
+        String numero = lerIdentificadorAplicacao();
+        if (!entrada.lerSimNao("Excluir a aplicação e todas as operações vinculadas? (s/n): ")) {
+            System.out.println("Exclusão cancelada.");
+            return;
+        }
+        sistema.excluirAplicacao(cpf, numero);
+        System.out.println("Aplicação e operações vinculadas excluídas.");
+    }
+
+    /** Exibe os lançamentos disponíveis e retorna o índice escolhido pelo usuário. */
+    private int selecionarOperacao(String cpf, String numeroAplicacao) {
+        List<OperacaoFinanceira> operacoes = sistema.listarOperacoes(cpf, numeroAplicacao);
+        if (operacoes.isEmpty()) {
+            System.out.println("A aplicação não possui operações cadastradas.");
+            return -1;
+        }
+        for (int indice = 0; indice < operacoes.size(); indice++) {
+            OperacaoFinanceira operacao = operacoes.get(indice);
+            System.out.printf("%d. %s | %s | %s | %s%n",
+                    indice + 1,
+                    operacao.data(),
+                    operacao.tipo(),
+                    FormatadorTerminal.formatarMoeda(operacao.valor()),
+                    operacao.descricao());
+        }
+        return entrada.lerInteiro("Número da operação: ", 1, operacoes.size()) - 1;
+    }
+
+    /** Substitui um lançamento e atualiza o saldo de forma transacional. */
+    private void alterarOperacao() {
+        String cpf = lerIdentificadorCliente();
+        String numero = lerIdentificadorAplicacao();
+        int indice = selecionarOperacao(cpf, numero);
+        if (indice < 0) {
+            return;
+        }
+        OperacaoFinanceira novaOperacao = lerOperacao();
+        sistema.alterarOperacao(cpf, numero, indice, novaOperacao);
+        System.out.println("Operação atualizada com sucesso.");
+    }
+
+    /** Remove um lançamento e reverte seu efeito financeiro após confirmação. */
+    private void excluirOperacao() {
+        String cpf = lerIdentificadorCliente();
+        String numero = lerIdentificadorAplicacao();
+        int indice = selecionarOperacao(cpf, numero);
+        if (indice < 0) {
+            return;
+        }
+        if (!entrada.lerSimNao("Excluir a operação selecionada e reverter seu efeito no saldo? (s/n): ")) {
+            System.out.println("Exclusão cancelada.");
+            return;
+        }
+        sistema.excluirOperacao(cpf, numero, indice);
+        System.out.println("Operação excluída e saldo ajustado com sucesso.");
+    }
+
+    /** Lê os dados validados de um depósito ou retirada. */
+    private OperacaoFinanceira lerOperacao() {
+        LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
+        BigDecimal valor = entrada.lerValorPositivo("Valor: ");
+        String descricao = entrada.lerObrigatorio("Descrição: ");
+        int opcaoTipo = entrada.lerInteiro("Tipo (1 = depósito, 2 = retirada): ", 1, 2);
+        TipoOperacao tipo = opcaoTipo == 1 ? TipoOperacao.DEPOSIT : TipoOperacao.WITHDRAWAL;
+        return new OperacaoFinanceira(data, valor, descricao, tipo);
     }
 
     /** Registra um depósito ou uma retirada na aplicação indicada. */

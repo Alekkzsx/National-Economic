@@ -38,7 +38,8 @@ public class MultiplasOperacoesFinanceiras {
     public static final int LIMITE_OPERACOES = 100;
 
     /** Cabeçalho do arquivo TSV de persistência de múltiplas operações versão 1. */
-    private static final String CABECALHO_ARQUIVO = "SGI-MOF\t1";
+    private static final String CABECALHO_ARQUIVO_V1 = "SGI-MOF\t1";
+    private static final String CABECALHO_ARQUIVO = "SGI-MOF\t2";
 
     /** Instância da aplicação financeira vinculada (Item 1). */
     private AplicacaoFinanceira aplicacao;
@@ -172,6 +173,66 @@ public class MultiplasOperacoesFinanceiras {
         this.aplicacao.setQuantidadeOperacoes(this.operacoes.size());
     }
 
+    /**
+     * Substitui ou remove um lançamento reconstruindo o saldo sem juros acumulados.
+     *
+     * <p>A operação é recusada depois de qualquer apuração de rendimento, pois
+     * nesse caso o histórico financeiro precisaria ser recalculado desde o início.</p>
+     *
+     * @param indice índice baseado em zero do lançamento a substituir ou remover
+     * @param novaOperacao novo lançamento; nulo remove o lançamento existente
+     * @throws IllegalStateException se já houver rendimento apurado
+     */
+    public void alterarOperacao(int indice, OperacaoFinanceira novaOperacao) {
+        if (indice < 0 || indice >= operacoes.size()) {
+            throw new IndexOutOfBoundsException("Índice de operação fora do intervalo.");
+        }
+        if (aplicacao.getDiasEfetivosCalculo() > 0
+                || aplicacao.getRendimentoAtualBruto().signum() > 0) {
+            throw new IllegalStateException(
+                    "Não é possível alterar operações após a apuração de rendimentos.");
+        }
+
+        List<OperacaoFinanceira> atualizadas = new ArrayList<>(operacoes);
+        if (novaOperacao == null) {
+            atualizadas.remove(indice);
+        } else {
+            atualizadas.set(indice, novaOperacao);
+        }
+
+        AplicacaoFinanceira reconstruida = reconstruirAplicacao();
+        MultiplasOperacoesFinanceiras validacao = new MultiplasOperacoesFinanceiras(
+                reconstruida, new DiaSemana(reconstruida.getDataAplicacao()));
+        for (OperacaoFinanceira operacao : atualizadas) {
+            validacao.adicionarOperacao(operacao);
+        }
+        this.aplicacao = reconstruida;
+        this.operacoes.clear();
+        this.operacoes.addAll(atualizadas);
+        this.calendario = validacao.getCalendario();
+        this.aplicacao.setQuantidadeOperacoes(this.operacoes.size());
+    }
+
+    private AplicacaoFinanceira reconstruirAplicacao() {
+        AplicacaoFinanceira original = this.aplicacao;
+        AplicacaoFinanceira reconstruida = new AplicacaoFinanceira(
+                original.getNomeAplicacao(),
+                original.getNumeroAplicacao(),
+                original.getValorAplicado(),
+                original.getTaxaMensal(),
+                original.getTipoRendimento(),
+                original.getTempoFinalVencimento(),
+                original.getTempoMinimoPermanencia(),
+                original.getTipoResgate(),
+                original.getIof(),
+                original.getTipoImpostoRenda(),
+                original.getDataAplicacao()
+        );
+        reconstruida.setConvencaoContagemDias(original.getConvencaoContagemDias());
+        reconstruida.setRegimeTributario(original.getRegimeTributario());
+        return reconstruida;
+    }
+
     // =========================================================================
     // Atualização Patrimonial em Dias Úteis (Item 4, Requisito R2.1)
     // =========================================================================
@@ -228,7 +289,7 @@ public class MultiplasOperacoesFinanceiras {
         LocalDate fim = (this.calendario != null && this.calendario.getData() != null)
                 ? this.calendario.getData()
                 : LocalDate.now();
-        LocalDate inicio = fim.minusDays(30);
+        LocalDate inicio = fim.minusDays(29);
         return getExtrato(inicio, fim);
     }
 
@@ -243,7 +304,7 @@ public class MultiplasOperacoesFinanceiras {
         if (dataReferencia == null) {
             throw new IllegalArgumentException("Data de referência não pode ser nula.");
         }
-        return getExtrato(dataReferencia.minusDays(30), dataReferencia);
+        return getExtrato(dataReferencia.minusDays(29), dataReferencia);
     }
 
     /**
@@ -536,7 +597,12 @@ public class MultiplasOperacoesFinanceiras {
                                 : this.aplicacao.getDataAplicacao().toString()),
                         Integer.toString(this.aplicacao.getDiasCorridos()),
                         Integer.toString(this.aplicacao.getDiasEfetivosCalculo()),
-                        this.aplicacao.getValorResgate().toPlainString()
+                        this.aplicacao.getValorResgate().toPlainString(),
+                        this.aplicacao.getConvencaoContagemDias().name(),
+                        this.aplicacao.getRegimeTributario().name(),
+                        this.aplicacao.getRendimentosCreditados().toPlainString(),
+                        this.aplicacao.getRendimentosPendentes().toPlainString(),
+                        Integer.toString(this.aplicacao.getDiasDesdeUltimoRendimento())
                 ));
                 writer.newLine();
 
@@ -610,7 +676,8 @@ public class MultiplasOperacoesFinanceiras {
 
         try (BufferedReader reader = Files.newBufferedReader(caminho, StandardCharsets.UTF_8)) {
             String cabecalho = reader.readLine();
-            if (!CABECALHO_ARQUIVO.equals(cabecalho)) {
+            boolean formatoAtual = CABECALHO_ARQUIVO.equals(cabecalho);
+            if (!formatoAtual && !CABECALHO_ARQUIVO_V1.equals(cabecalho)) {
                 throw new IOException("Formato de arquivo incompatível ou versão não suportada: " + cabecalho);
             }
 
@@ -625,7 +692,7 @@ public class MultiplasOperacoesFinanceiras {
 
                 switch (tipoRegistro) {
                     case "I" -> {
-                        if (campos.length < 20) {
+                        if (campos.length < (formatoAtual ? 25 : 20)) {
                             throw new IOException("Registro de aplicação incompleto na linha " + numLinha);
                         }
                         String numero = desescaparTexto(campos[1]);
@@ -655,6 +722,27 @@ public class MultiplasOperacoesFinanceiras {
                         appRestaurada.setDiasCorridos(diasCorridos);
                         appRestaurada.setDiasEfetivosCalculo(diasEfetivos);
                         appRestaurada.setValorResgate(valorResgate);
+                        if (formatoAtual) {
+                            appRestaurada.setConvencaoContagemDias(
+                                    ConvencaoContagemDias.valueOf(campos[20]));
+                            appRestaurada.setRegimeTributario(RegimeTributario.valueOf(campos[21]));
+                            appRestaurada.restaurarAcumuladores(
+                                    saldo,
+                                    new BigDecimal(campos[22]),
+                                    new BigDecimal(campos[23]),
+                                    Integer.parseInt(campos[24])
+                            );
+                        } else {
+                            BigDecimal rendimentoBruto = new BigDecimal(campos[14]);
+                            BigDecimal rendimentoLiquido = new BigDecimal(campos[15]);
+                            appRestaurada.restaurarAcumuladores(
+                                    saldo,
+                                    rendimentoBruto,
+                                    BigDecimal.ZERO,
+                                    diasCorridos
+                            );
+                            appRestaurada.setRendimentoAtualLiquido(rendimentoLiquido);
+                        }
                     }
                     case "K" -> {
                         if (campos.length >= 4) {
