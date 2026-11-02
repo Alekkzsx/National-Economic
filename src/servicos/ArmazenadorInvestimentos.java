@@ -40,314 +40,314 @@ import java.util.Set;
  * escapados para manter cada registro em uma única linha.</p>
  */
 final class ArmazenadorInvestimentos {
-    private static final String CURRENT_HEADER = "NATIONAL-ECONOMIC\t3";
-    private static final String VERSION_2_HEADER = "NATIONAL-ECONOMIC\t2";
-    private static final String VERSION_1_HEADER = "NATIONAL-ECONOMIC\t1";
+    private static final String CABECALHO_ATUAL = "NATIONAL-ECONOMIC\t3";
+    private static final String CABECALHO_VERSAO_2 = "NATIONAL-ECONOMIC\t2";
+    private static final String CABECALHO_VERSAO_1 = "NATIONAL-ECONOMIC\t1";
 
     private ArmazenadorInvestimentos() {
     }
 
     /** Salva todos os dados em arquivo temporário e depois o substitui com segurança. */
     static void salvar(
-            Path path,
-            Collection<ContaCliente> clients,
-            Map<String, List<OperacaoFinanceira>> statements
+            Path caminho,
+            Collection<ContaCliente> clientes,
+            Map<String, List<OperacaoFinanceira>> extratos
     ) throws IOException {
-        Path absolutePath = path.toAbsolutePath();
-        Path parent = absolutePath.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
+        Path caminhoAbsoluto = caminho.toAbsolutePath();
+        Path diretorioPai = caminhoAbsoluto.getParent();
+        if (diretorioPai != null) {
+            Files.createDirectories(diretorioPai);
         }
 
-        Path temporaryPath = absolutePath.resolveSibling(absolutePath.getFileName() + ".tmp");
+        Path caminhoTemporario = caminhoAbsoluto.resolveSibling(caminhoAbsoluto.getFileName() + ".tmp");
         try {
-            gravarArquivo(temporaryPath, clients, statements);
-            definirPermissoesPrivadas(temporaryPath);
-            substituirArquivo(temporaryPath, absolutePath);
+            gravarArquivo(caminhoTemporario, clientes, extratos);
+            definirPermissoesPrivadas(caminhoTemporario);
+            substituirArquivo(caminhoTemporario, caminhoAbsoluto);
         } finally {
-            Files.deleteIfExists(temporaryPath);
+            Files.deleteIfExists(caminhoTemporario);
         }
     }
 
     /** Carrega as versões suportadas e informa a linha caso encontre dados inválidos. */
-    static SistemaInvestimentos carregar(Path path) throws IOException {
-        SistemaInvestimentos system = new SistemaInvestimentos();
-        Map<String, AplicacaoFinanceira> investmentsByNumber = new LinkedHashMap<>();
-        Map<String, Integer> operationCounts = new LinkedHashMap<>();
+    static SistemaInvestimentos carregar(Path caminho) throws IOException {
+        SistemaInvestimentos sistema = new SistemaInvestimentos();
+        Map<String, AplicacaoFinanceira> aplicacoesPorNumero = new LinkedHashMap<>();
+        Map<String, Integer> contagemOperacoes = new LinkedHashMap<>();
 
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            int version = lerVersao(reader.readLine());
-            String line;
-            int lineNumber = 1;
+        try (BufferedReader leitor = Files.newBufferedReader(caminho, StandardCharsets.UTF_8)) {
+            int versao = lerVersao(leitor.readLine());
+            String linha;
+            int numeroLinha = 1;
 
-            while ((line = reader.readLine()) != null) {
-                lineNumber++;
-                if (line.isEmpty()) {
+            while ((linha = leitor.readLine()) != null) {
+                numeroLinha++;
+                if (linha.isEmpty()) {
                     continue;
                 }
 
                 try {
-                    lerRegistro(line, version, system, investmentsByNumber, operationCounts);
-                } catch (RuntimeException exception) {
+                    lerRegistro(linha, versao, sistema, aplicacoesPorNumero, contagemOperacoes);
+                } catch (RuntimeException excecao) {
                     throw new IOException(
-                            "Registro inválido na linha " + lineNumber + ": " + exception.getMessage(),
-                            exception
+                            "Registro inválido na linha " + numeroLinha + ": " + excecao.getMessage(),
+                            excecao
                     );
                 }
             }
         }
 
-        validarContagemOperacoes(system, operationCounts);
-        return system;
+        validarContagemOperacoes(sistema, contagemOperacoes);
+        return sistema;
     }
 
     private static void gravarArquivo(
-            Path path,
-            Collection<ContaCliente> clients,
-            Map<String, List<OperacaoFinanceira>> statements
+            Path caminho,
+            Collection<ContaCliente> clientes,
+            Map<String, List<OperacaoFinanceira>> extratos
     ) throws IOException {
-        try (BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-            writer.write(CURRENT_HEADER);
-            writer.newLine();
+        try (BufferedWriter escritor = Files.newBufferedWriter(caminho, StandardCharsets.UTF_8)) {
+            escritor.write(CABECALHO_ATUAL);
+            escritor.newLine();
 
-            for (ContaCliente client : clients) {
-                gravarCliente(writer, client);
-                for (AplicacaoFinanceira investment : client.listarAplicacoes()) {
-                    gravarAplicacao(writer, client, investment);
-                    gravarOperacoes(writer, client, investment, statements);
+            for (ContaCliente cliente : clientes) {
+                gravarCliente(escritor, cliente);
+                for (AplicacaoFinanceira aplicacao : cliente.listarAplicacoes()) {
+                    gravarAplicacao(escritor, cliente, aplicacao);
+                    gravarOperacoes(escritor, cliente, aplicacao, extratos);
                 }
             }
         }
     }
 
-    private static void gravarCliente(BufferedWriter writer, ContaCliente client) throws IOException {
-        DadosPessoais personalData = client.getDadosPessoais();
+    private static void gravarCliente(BufferedWriter escritor, ContaCliente cliente) throws IOException {
+        DadosPessoais dadosPessoais = cliente.getDadosPessoais();
         gravarRegistro(
-                writer,
+                escritor,
                 "C",
-                personalData.getCpf(),
-                personalData.getNome(),
-                personalData.getCelular(),
-                Integer.toString(client.getNumeroAgencia()),
-                Long.toString(client.getNumeroConta())
+                dadosPessoais.getCpf(),
+                dadosPessoais.getNome(),
+                dadosPessoais.getCelular(),
+                Integer.toString(cliente.getNumeroAgencia()),
+                Long.toString(cliente.getNumeroConta())
         );
     }
 
     private static void gravarAplicacao(
-            BufferedWriter writer,
-            ContaCliente client,
-            AplicacaoFinanceira investment
+            BufferedWriter escritor,
+            ContaCliente cliente,
+            AplicacaoFinanceira aplicacao
     ) throws IOException {
         gravarRegistro(
-                writer,
+                escritor,
                 "I",
-                client.getDadosPessoais().getCpf(),
-                investment.getNumero(),
-                investment.getNome(),
-                investment.getValorInicial().toPlainString(),
-                investment.getTaxaMensal().toPlainString(),
-                investment.getDataAplicacao().toString(),
-                investment.getSaldoCreditado().toPlainString(),
-                investment.getRendimentoCreditado().toPlainString(),
-                investment.getDataUltimaAtualizacao().toString(),
-                Integer.toString(investment.getDiasCorridos()),
-                Integer.toString(investment.getDiasEfetivos()),
-                Integer.toString(investment.getQuantidadeOperacoes()),
-                investment.getConvencaoContagemDias().nome(),
-                investment.getRegimeTributario().nome(),
-                investment.getPeriodicidadeRendimento().nome(),
-                Integer.toString(investment.getDiasVencimento()),
-                Integer.toString(investment.getDiasPermanenciaMinima()),
-                investment.getFrequenciaResgate().nome(),
-                investment.getOpcaoIOF().nome(),
-                investment.getOpcaoIR().nome(),
-                investment.getRendimentosPendentes().toPlainString(),
-                Integer.toString(investment.getDiasDesdeRendimento())
+                cliente.getDadosPessoais().getCpf(),
+                aplicacao.getNumero(),
+                aplicacao.getNome(),
+                aplicacao.getValorInicial().toPlainString(),
+                aplicacao.getTaxaMensal().toPlainString(),
+                aplicacao.getDataAplicacao().toString(),
+                aplicacao.getSaldoCreditado().toPlainString(),
+                aplicacao.getRendimentoCreditado().toPlainString(),
+                aplicacao.getDataUltimaAtualizacao().toString(),
+                Integer.toString(aplicacao.getDiasCorridos()),
+                Integer.toString(aplicacao.getDiasEfetivos()),
+                Integer.toString(aplicacao.getQuantidadeOperacoes()),
+                aplicacao.getConvencaoContagemDias().name(),
+                aplicacao.getRegimeTributario().name(),
+                aplicacao.getPeriodicidadeRendimento().name(),
+                Integer.toString(aplicacao.getDiasVencimento()),
+                Integer.toString(aplicacao.getDiasPermanenciaMinima()),
+                aplicacao.getFrequenciaResgate().name(),
+                aplicacao.getOpcaoIOF().name(),
+                aplicacao.getOpcaoIR().name(),
+                aplicacao.getRendimentosPendentes().toPlainString(),
+                Integer.toString(aplicacao.getDiasDesdeRendimento())
         );
     }
 
     private static void gravarOperacoes(
-            BufferedWriter writer,
-            ContaCliente client,
-            AplicacaoFinanceira investment,
-            Map<String, List<OperacaoFinanceira>> statements
+            BufferedWriter escritor,
+            ContaCliente cliente,
+            AplicacaoFinanceira aplicacao,
+            Map<String, List<OperacaoFinanceira>> extratos
     ) throws IOException {
-        for (OperacaoFinanceira operation : statements.getOrDefault(investment.getNumero(), List.of())) {
+        for (OperacaoFinanceira operacao : extratos.getOrDefault(aplicacao.getNumero(), List.of())) {
             gravarRegistro(
-                    writer,
+                    escritor,
                     "O",
-                    client.getDadosPessoais().getCpf(),
-                    investment.getNumero(),
-                    operation.data().toString(),
-                    operation.valor().toPlainString(),
-                    operation.descricao(),
-                    operation.tipo().nome()
+                    cliente.getDadosPessoais().getCpf(),
+                    aplicacao.getNumero(),
+                    operacao.data().toString(),
+                    operacao.valor().toPlainString(),
+                    operacao.descricao(),
+                    operacao.tipo().name()
             );
         }
     }
 
     private static void lerRegistro(
-            String line,
-            int version,
-            SistemaInvestimentos system,
-            Map<String, AplicacaoFinanceira> investmentsByNumber,
-            Map<String, Integer> operationCounts
+            String linha,
+            int versao,
+            SistemaInvestimentos sistema,
+            Map<String, AplicacaoFinanceira> aplicacoesPorNumero,
+            Map<String, Integer> contagemOperacoes
     ) throws IOException {
-        List<String> fields = interpretarRegistro(line);
-        switch (fields.getFirst()) {
-            case "C" -> lerCliente(fields, system);
-            case "I" -> lerAplicacao(fields, version, system, investmentsByNumber);
-            case "O" -> lerOperacao(fields, system, investmentsByNumber, operationCounts);
+        List<String> campos = interpretarRegistro(linha);
+        switch (campos.getFirst()) {
+            case "C" -> lerCliente(campos, sistema);
+            case "I" -> lerAplicacao(campos, versao, sistema, aplicacoesPorNumero);
+            case "O" -> lerOperacao(campos, sistema, aplicacoesPorNumero, contagemOperacoes);
             default -> throw new IllegalArgumentException("Tipo de registro desconhecido.");
         }
     }
 
-    private static void lerCliente(List<String> fields, SistemaInvestimentos system) {
-        exigirQuantidadeCampos(fields, 6);
-        DadosPessoais personalData = new DadosPessoais(fields.get(2), fields.get(1), fields.get(3));
-        system.cadastrarCliente(personalData, Integer.parseInt(fields.get(4)), Long.parseLong(fields.get(5)));
+    private static void lerCliente(List<String> campos, SistemaInvestimentos sistema) {
+        exigirQuantidadeCampos(campos, 6);
+        DadosPessoais dadosPessoais = new DadosPessoais(campos.get(2), campos.get(1), campos.get(3));
+        sistema.cadastrarCliente(dadosPessoais, Integer.parseInt(campos.get(4)), Long.parseLong(campos.get(5)));
     }
 
     private static void lerAplicacao(
-            List<String> fields,
-            int version,
-            SistemaInvestimentos system,
-            Map<String, AplicacaoFinanceira> investmentsByNumber
+            List<String> campos,
+            int versao,
+            SistemaInvestimentos sistema,
+            Map<String, AplicacaoFinanceira> aplicacoesPorNumero
     ) {
-        exigirQuantidadeCampos(fields, quantidadeCamposPara(version));
-        String clientCpf = fields.get(1);
-        AplicacaoFinanceira investment = new AplicacaoFinanceira(
-                fields.get(3),
-                fields.get(2),
-                new BigDecimal(fields.get(4)),
-                new BigDecimal(fields.get(5)),
-                LocalDate.parse(fields.get(6))
+        exigirQuantidadeCampos(campos, quantidadeCamposPara(versao));
+        String cpfCliente = campos.get(1);
+        AplicacaoFinanceira aplicacao = new AplicacaoFinanceira(
+                campos.get(3),
+                campos.get(2),
+                new BigDecimal(campos.get(4)),
+                new BigDecimal(campos.get(5)),
+                LocalDate.parse(campos.get(6))
         );
 
-        investment.setConvencaoContagemDias(ConvencaoContagemDias.valueOf(fields.get(13)));
-        investment.setRegimeTributario(RegimeTributario.valueOf(fields.get(14)));
-        restaurarEstadoAplicacao(investment, fields, version);
-        system.cadastrarAplicacao(clientCpf, investment);
+        aplicacao.setConvencaoContagemDias(ConvencaoContagemDias.valueOf(campos.get(13)));
+        aplicacao.setRegimeTributario(RegimeTributario.valueOf(campos.get(14)));
+        restaurarEstadoAplicacao(aplicacao, campos, versao);
+        sistema.cadastrarAplicacao(cpfCliente, aplicacao);
 
-        if (investmentsByNumber.putIfAbsent(investment.getNumero(), investment) != null) {
+        if (aplicacoesPorNumero.putIfAbsent(aplicacao.getNumero(), aplicacao) != null) {
             throw new IllegalArgumentException("Número de investimento duplicado.");
         }
     }
 
-    private static void restaurarEstadoAplicacao(AplicacaoFinanceira investment, List<String> fields, int version) {
-        BigDecimal balance = new BigDecimal(fields.get(7));
-        BigDecimal accruedEarnings = new BigDecimal(fields.get(8));
-        LocalDate lastUpdateDate = LocalDate.parse(fields.get(9));
-        int elapsedDays = Integer.parseInt(fields.get(10));
-        int applicationDays = Integer.parseInt(fields.get(11));
-        int operationCount = Integer.parseInt(fields.get(12));
+    private static void restaurarEstadoAplicacao(AplicacaoFinanceira aplicacao, List<String> campos, int versao) {
+        BigDecimal saldo = new BigDecimal(campos.get(7));
+        BigDecimal rendimentosAcumulados = new BigDecimal(campos.get(8));
+        LocalDate dataUltimaAtualizacao = LocalDate.parse(campos.get(9));
+        int diasCorridos = Integer.parseInt(campos.get(10));
+        int diasEfetivos = Integer.parseInt(campos.get(11));
+        int quantidadeOperacoes = Integer.parseInt(campos.get(12));
 
-        if (version == 1) {
-            investment.restaurarEstado(
-                    balance, accruedEarnings, lastUpdateDate, elapsedDays, applicationDays, operationCount
+        if (versao == 1) {
+            aplicacao.restaurarEstado(
+                    saldo, rendimentosAcumulados, dataUltimaAtualizacao, diasCorridos, diasEfetivos, quantidadeOperacoes
             );
             return;
         }
 
-        PeriodicidadeRendimento yieldPeriod = PeriodicidadeRendimento.valueOf(fields.get(15));
-        int maturityDays = Integer.parseInt(fields.get(16));
-        int minimumStayDays = Integer.parseInt(fields.get(17));
-        FrequenciaResgate redemptionFrequency = FrequenciaResgate.valueOf(fields.get(18));
-        OpcaoIOF iofOption = OpcaoIOF.valueOf(fields.get(19));
-        OpcaoIR irOption = OpcaoIR.valueOf(fields.get(20));
+        PeriodicidadeRendimento periodicidadeRendimento = PeriodicidadeRendimento.valueOf(campos.get(15));
+        int diasVencimento = Integer.parseInt(campos.get(16));
+        int diasPermanenciaMinima = Integer.parseInt(campos.get(17));
+        FrequenciaResgate frequenciaResgate = FrequenciaResgate.valueOf(campos.get(18));
+        OpcaoIOF opcaoIOF = OpcaoIOF.valueOf(campos.get(19));
+        OpcaoIR opcaoIR = OpcaoIR.valueOf(campos.get(20));
 
-        if (version == 2) {
-            investment.restaurarEstado(
-                    balance,
-                    accruedEarnings,
-                    lastUpdateDate,
-                    elapsedDays,
-                    applicationDays,
-                    operationCount,
-                    yieldPeriod,
-                    maturityDays,
-                    minimumStayDays,
-                    redemptionFrequency,
-                    iofOption,
-                    irOption
+        if (versao == 2) {
+            aplicacao.restaurarEstado(
+                    saldo,
+                    rendimentosAcumulados,
+                    dataUltimaAtualizacao,
+                    diasCorridos,
+                    diasEfetivos,
+                    quantidadeOperacoes,
+                    periodicidadeRendimento,
+                    diasVencimento,
+                    diasPermanenciaMinima,
+                    frequenciaResgate,
+                    opcaoIOF,
+                    opcaoIR
             );
             return;
         }
 
-        investment.restaurarEstado(
-                balance,
-                accruedEarnings,
-                lastUpdateDate,
-                elapsedDays,
-                applicationDays,
-                operationCount,
-                yieldPeriod,
-                maturityDays,
-                minimumStayDays,
-                redemptionFrequency,
-                iofOption,
-                irOption,
-                new BigDecimal(fields.get(21)),
-                Integer.parseInt(fields.get(22))
+        aplicacao.restaurarEstado(
+                saldo,
+                rendimentosAcumulados,
+                dataUltimaAtualizacao,
+                diasCorridos,
+                diasEfetivos,
+                quantidadeOperacoes,
+                periodicidadeRendimento,
+                diasVencimento,
+                diasPermanenciaMinima,
+                frequenciaResgate,
+                opcaoIOF,
+                opcaoIR,
+                new BigDecimal(campos.get(21)),
+                Integer.parseInt(campos.get(22))
         );
     }
 
     private static void lerOperacao(
-            List<String> fields,
-            SistemaInvestimentos system,
-            Map<String, AplicacaoFinanceira> investmentsByNumber,
-            Map<String, Integer> operationCounts
+            List<String> campos,
+            SistemaInvestimentos sistema,
+            Map<String, AplicacaoFinanceira> aplicacoesPorNumero,
+            Map<String, Integer> contagemOperacoes
     ) {
-        exigirQuantidadeCampos(fields, 7);
-        String clientCpf = fields.get(1);
-        String investmentNumber = fields.get(2);
-        AplicacaoFinanceira investment = investmentsByNumber.get(investmentNumber);
-        if (investment == null) {
+        exigirQuantidadeCampos(campos, 7);
+        String cpfCliente = campos.get(1);
+        String numeroAplicacao = campos.get(2);
+        AplicacaoFinanceira aplicacao = aplicacoesPorNumero.get(numeroAplicacao);
+        if (aplicacao == null) {
             throw new IllegalArgumentException("Operação associada a investimento inexistente ou ainda não declarado.");
         }
 
-        OperacaoFinanceira operation = new OperacaoFinanceira(
-                LocalDate.parse(fields.get(3)),
-                new BigDecimal(fields.get(4)),
-                fields.get(5),
-                TipoOperacao.valueOf(fields.get(6))
+        OperacaoFinanceira operacao = new OperacaoFinanceira(
+                LocalDate.parse(campos.get(3)),
+                new BigDecimal(campos.get(4)),
+                campos.get(5),
+                TipoOperacao.valueOf(campos.get(6))
         );
-        system.appendRestoredOperation(clientCpf, investmentNumber, operation);
-        operationCounts.merge(investmentNumber, 1, Integer::sum);
+        sistema.anexarOperacaoRestaurada(cpfCliente, numeroAplicacao, operacao);
+        contagemOperacoes.merge(numeroAplicacao, 1, Integer::sum);
     }
 
     private static void validarContagemOperacoes(
-            SistemaInvestimentos system,
-            Map<String, Integer> operationCounts
+            SistemaInvestimentos sistema,
+            Map<String, Integer> contagemOperacoes
     ) throws IOException {
-        for (ContaCliente client : system.listarClientes()) {
-            for (AplicacaoFinanceira investment : client.listarAplicacoes()) {
-                int persistedCount = operationCounts.getOrDefault(investment.getNumero(), 0);
-                if (persistedCount != investment.getQuantidadeOperacoes()) {
+        for (ContaCliente cliente : sistema.listarClientes()) {
+            for (AplicacaoFinanceira aplicacao : cliente.listarAplicacoes()) {
+                int quantidadePersistida = contagemOperacoes.getOrDefault(aplicacao.getNumero(), 0);
+                if (quantidadePersistida != aplicacao.getQuantidadeOperacoes()) {
                     throw new IOException(
                             "Quantidade de operações inconsistente no investimento "
-                                    + investment.getNumero() + "."
+                                    + aplicacao.getNumero() + "."
                     );
                 }
             }
         }
     }
 
-    private static int lerVersao(String header) throws IOException {
-        if (VERSION_1_HEADER.equals(header)) {
+    private static int lerVersao(String cabecalho) throws IOException {
+        if (CABECALHO_VERSAO_1.equals(cabecalho)) {
             return 1;
         }
-        if (VERSION_2_HEADER.equals(header)) {
+        if (CABECALHO_VERSAO_2.equals(cabecalho)) {
             return 2;
         }
-        if (CURRENT_HEADER.equals(header)) {
+        if (CABECALHO_ATUAL.equals(cabecalho)) {
             return 3;
         }
         throw new IOException("Formato de arquivo desconhecido ou versão incompatível.");
     }
 
-    private static int quantidadeCamposPara(int version) {
-        return switch (version) {
+    private static int quantidadeCamposPara(int versao) {
+        return switch (versao) {
             case 1 -> 15;
             case 2 -> 21;
             case 3 -> 23;
@@ -355,86 +355,86 @@ final class ArmazenadorInvestimentos {
         };
     }
 
-    private static void gravarRegistro(BufferedWriter writer, String... fields) throws IOException {
-        for (int index = 0; index < fields.length; index++) {
-            if (index > 0) {
-                writer.write('\t');
+    private static void gravarRegistro(BufferedWriter escritor, String... campos) throws IOException {
+        for (int indice = 0; indice < campos.length; indice++) {
+            if (indice > 0) {
+                escritor.write('\t');
             }
-            writer.write(escapar(fields[index]));
+            escritor.write(escapar(campos[indice]));
         }
-        writer.newLine();
+        escritor.newLine();
     }
 
-    private static String escapar(String value) {
-        return value.replace("\\", "\\\\")
+    private static String escapar(String valor) {
+        return valor.replace("\\", "\\\\")
                 .replace("\t", "\\t")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r");
     }
 
-    private static List<String> interpretarRegistro(String line) {
-        List<String> fields = new ArrayList<>();
-        StringBuilder field = new StringBuilder();
+    private static List<String> interpretarRegistro(String linha) {
+        List<String> campos = new ArrayList<>();
+        StringBuilder campo = new StringBuilder();
         boolean escaped = false;
 
-        for (int index = 0; index < line.length(); index++) {
-            char character = line.charAt(index);
+        for (int indice = 0; indice < linha.length(); indice++) {
+            char character = linha.charAt(indice);
             if (escaped) {
-                acrescentarCaractereEscapado(field, character);
+                acrescentarCaractereEscapado(campo, character);
                 escaped = false;
             } else if (character == '\\') {
                 escaped = true;
             } else if (character == '\t') {
-                fields.add(field.toString());
-                field.setLength(0);
+                campos.add(campo.toString());
+                campo.setLength(0);
             } else {
-                field.append(character);
+                campo.append(character);
             }
         }
 
         if (escaped) {
             throw new IllegalArgumentException("Escape incompleto.");
         }
-        fields.add(field.toString());
-        return fields;
+        campos.add(campo.toString());
+        return campos;
     }
 
-    private static void acrescentarCaractereEscapado(StringBuilder field, char character) {
+    private static void acrescentarCaractereEscapado(StringBuilder campo, char character) {
         switch (character) {
-            case 't' -> field.append('\t');
-            case 'n' -> field.append('\n');
-            case 'r' -> field.append('\r');
-            case '\\' -> field.append('\\');
+            case 't' -> campo.append('\t');
+            case 'n' -> campo.append('\n');
+            case 'r' -> campo.append('\r');
+            case '\\' -> campo.append('\\');
             default -> throw new IllegalArgumentException("Sequência de escape inválida.");
         }
     }
 
-    private static void exigirQuantidadeCampos(List<String> fields, int expected) {
-        if (fields.size() != expected) {
+    private static void exigirQuantidadeCampos(List<String> campos, int expected) {
+        if (campos.size() != expected) {
             throw new IllegalArgumentException("Quantidade de campos inválida.");
         }
     }
 
-    private static void substituirArquivo(Path temporaryPath, Path destinationPath) throws IOException {
+    private static void substituirArquivo(Path caminhoTemporario, Path destinationPath) throws IOException {
         try {
             Files.move(
-                    temporaryPath,
+                    caminhoTemporario,
                     destinationPath,
                     StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING
             );
-        } catch (AtomicMoveNotSupportedException exception) {
-            Files.move(temporaryPath, destinationPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException excecao) {
+            Files.move(caminhoTemporario, destinationPath, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
-    private static void definirPermissoesPrivadas(Path path) throws IOException {
+    private static void definirPermissoesPrivadas(Path caminho) throws IOException {
         try {
             Set<PosixFilePermission> permissions = EnumSet.of(
                     PosixFilePermission.OWNER_READ,
                     PosixFilePermission.OWNER_WRITE
             );
-            Files.setPosixFilePermissions(path, permissions);
+            Files.setPosixFilePermissions(caminho, permissions);
         } catch (UnsupportedOperationException ignored) {
             // Sistemas sem permissões POSIX usam as proteções padrão do sistema de arquivos.
         }

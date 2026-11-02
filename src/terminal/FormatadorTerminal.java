@@ -8,8 +8,8 @@ public final class FormatadorTerminal {
     private FormatadorTerminal() { }
 
     /** Oculta todos os dígitos do CPF, mantendo apenas a apresentação mascarada. */
-    public static String mascararCpf(Object value) {
-        String cpf = value == null ? "" : value.toString();
+    public static String mascararCpf(Object valor) {
+        String cpf = valor == null ? "" : valor.toString();
         String digits = cpf.replaceAll("\\D", "");
         if (digits.length() == 11) {
             return "***." + digits.substring(3, 6) + "." + digits.substring(6, 9) + "-**";
@@ -21,8 +21,8 @@ public final class FormatadorTerminal {
     }
 
     /** Exibe valores monetários em reais, arredondados para duas casas. */
-    public static String formatarMoeda(BigDecimal value) {
-        return value == null ? "não disponível" : "R$ " + value.setScale(2, RoundingMode.HALF_UP);
+    public static String formatarMoeda(BigDecimal valor) {
+        return valor == null ? "não disponível" : "R$ " + valor.setScale(2, RoundingMode.HALF_UP);
     }
 
     /** Garante uma mensagem útil e remove CPFs eventualmente incluídos no erro. */

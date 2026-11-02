@@ -13,35 +13,35 @@ import java.util.Objects;
 public class DataCalendario {
     /** Locale fixa para que os nomes dos dias sejam sempre apresentados em português do Brasil. */
     private static final Locale PORTUGUESE = Locale.forLanguageTag("pt-BR");
-    private LocalDate date;
+    private LocalDate data;
 
     /** Cria a instância a partir de uma data já representada por {@link LocalDate}. */
-    public DataCalendario(LocalDate date) {
-        this.date = Objects.requireNonNull(date, "Data obrigatória.");
+    public DataCalendario(LocalDate data) {
+        this.data = Objects.requireNonNull(data, "Data obrigatória.");
     }
 
     /** Cria a instância validando dia, mês e ano pelo calendário gregoriano. */
     public DataCalendario(int day, int month, int year) {
-        this.date = dataValidada(day, month, year);
+        this.data = dataValidada(day, month, year);
     }
 
     /** Retorna a data armazenada. */
-    public LocalDate getData() { return date; }
+    public LocalDate getData() { return data; }
     /** Retorna o dia do mês, entre 1 e 31 conforme o mês. */
-    public int getDia() { return date.getDayOfMonth(); }
+    public int getDia() { return data.getDayOfMonth(); }
     /** Retorna o mês numérico, de 1 a 12. */
-    public int getMes() { return date.getMonthValue(); }
+    public int getMes() { return data.getMonthValue(); }
     /** Retorna o ano da data armazenada. */
-    public int getAno() { return date.getYear(); }
+    public int getAno() { return data.getYear(); }
 
     /** Substitui a data; {@code null} não é permitido. */
-    public void setData(LocalDate date) {
-        this.date = Objects.requireNonNull(date, "Data obrigatória.");
+    public void setData(LocalDate data) {
+        this.data = Objects.requireNonNull(data, "Data obrigatória.");
     }
 
     /** Sobrecarga de cadastro para receber uma data pronta. */
-    public void setCadastro(LocalDate date) {
-        setData(date);
+    public void setCadastro(LocalDate data) {
+        setData(data);
     }
 
     /** Cadastra uma data composta e converte datas civis inválidas em erro de validação. */
@@ -55,7 +55,7 @@ public class DataCalendario {
 
     /** Retorna sábado=0, domingo=1, segunda=2, ... sexta=6. */
     public int diaDaSemana() {
-        return mapearDiaDaSemana(date);
+        return mapearDiaDaSemana(data);
     }
 
     /** Calcula o índice do dia da semana para outra data sem alterar o cadastro atual. */
@@ -65,7 +65,7 @@ public class DataCalendario {
 
     /** Retorna o nome completo do dia atual, em português brasileiro. */
     public String nomeDoDiaDaSemana() {
-        return date.getDayOfWeek().getDisplayName(TextStyle.FULL, PORTUGUESE);
+        return data.getDayOfWeek().getDisplayName(TextStyle.FULL, PORTUGUESE);
     }
 
     /** Retorna o nome do dia de uma data informada sem alterar a instância. */
@@ -83,8 +83,8 @@ public class DataCalendario {
     }
 
     /** Traduz o enum ISO do Java para o índice definido pela atividade. */
-    private static int mapearDiaDaSemana(LocalDate date) {
-        return switch (date.getDayOfWeek()) {
+    private static int mapearDiaDaSemana(LocalDate data) {
+        return switch (data.getDayOfWeek()) {
             case SATURDAY -> 0;
             case SUNDAY -> 1;
             case MONDAY -> 2;
@@ -98,6 +98,6 @@ public class DataCalendario {
     /** Inclui a data e o dia da semana em português na representação textual. */
     @Override
     public String toString() {
-        return "DataCalendario{date=" + date + ", dayOfWeek='" + nomeDoDiaDaSemana() + "'}";
+        return "DataCalendario{data=" + data + ", dayOfWeek='" + nomeDoDiaDaSemana() + "'}";
     }
 }

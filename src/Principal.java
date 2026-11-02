@@ -1,19 +1,19 @@
-import terminal.FormatadorTerminal;
-import terminal.EntradaTerminal;
-import terminal.TermosInvestimento;
-
-import modelo.ContaCliente;
-import modelo.OperacaoFinanceira;
-import modelo.AplicacaoFinanceira;
-import modelo.TipoOperacao;
-import modelo.DadosPessoais;
 import mercado.ClienteCotacoes;
+import modelo.AplicacaoFinanceira;
+import modelo.ContaCliente;
+import modelo.DadosPessoais;
+import modelo.OperacaoFinanceira;
+import modelo.TipoOperacao;
 import servicos.SistemaInvestimentos;
+import terminal.EntradaTerminal;
+import terminal.FormatadorTerminal;
+import terminal.TermosInvestimento;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -29,36 +29,60 @@ import java.util.Scanner;
  */
 public final class Principal {
     /** Arquivo padrão usado para carregar e salvar o estado do sistema. */
-    private static final Path DEFAULT_FILE = Path.of("data", "sgi.db");
+    private static final Path ARQUIVO_PADRAO = Path.of("data", "sgi.db");
 
-    private final EntradaTerminal input;
-    private SistemaInvestimentos system;
-    private boolean saveDefaultOnExit;
+    /** Quantidade de dias, contando o dia atual, do extrato padrão. */
+    private static final int DIAS_EXTRATO_PADRAO = 30;
 
-    private Principal(EntradaTerminal input, SistemaInvestimentos system, boolean saveDefaultOnExit) {
-        this.input = input;
-        this.system = system;
-        this.saveDefaultOnExit = saveDefaultOnExit;
+    /** Maior número de porta TCP válido. */
+    private static final int PORTA_MAXIMA = 65_535;
+
+    private static final String PROMPT_CLIENTE = "CPF/identificador do cliente: ";
+    private static final String PROMPT_APLICACAO = "Código da aplicação: ";
+    private static final String FORMATO_DATA = "(AAAA-MM-DD): ";
+
+    private final EntradaTerminal entrada;
+
+    /** Não é final porque a opção "Carregar estado" substitui a instância inteira. */
+    private SistemaInvestimentos sistema;
+
+    /**
+     * Indica se o estado deve ser gravado em {@link #ARQUIVO_PADRAO} ao sair.
+     *
+     * <p>Fica desligado quando o arquivo padrão existe mas não pôde ser lido,
+     * para não sobrescrevê-lo com um sistema vazio. Volta a ser ligado assim
+     * que o usuário salva explicitamente no arquivo padrão.</p>
+     */
+    private boolean salvarAutomaticamenteAoSair;
+
+    private Principal(EntradaTerminal entrada, EstadoInicial estadoInicial) {
+        this.entrada = entrada;
+        this.sistema = estadoInicial.sistema();
+        this.salvarAutomaticamenteAoSair = estadoInicial.salvarAutomaticamenteAoSair();
     }
 
     /** Carrega o estado padrão e inicia a interface interativa. */
     public static void main(String[] args) {
-        try (Scanner scanner = new Scanner(System.in)) {
-            EstadoInicial initialState = carregarEstadoPadrao();
-            new Principal(new EntradaTerminal(scanner), initialState.system(), initialState.saveDefaultOnExit()).executar();
+        try (Scanner leitor = new Scanner(System.in)) {
+            new Principal(new EntradaTerminal(leitor), carregarEstadoPadrao()).executar();
         }
     }
 
+    // ---------------------------------------------------------------------
+    // Ciclo de vida
+    // ---------------------------------------------------------------------
+
     /** Usa o arquivo padrão quando disponível e protege dados que não puderam ser lidos. */
     private static EstadoInicial carregarEstadoPadrao() {
-        if (!Files.exists(DEFAULT_FILE)) {
+        if (!Files.exists(ARQUIVO_PADRAO)) {
             return new EstadoInicial(new SistemaInvestimentos(), true);
         }
         try {
-            System.out.println("Carregando estado de " + DEFAULT_FILE + "...");
-            return new EstadoInicial(SistemaInvestimentos.carregar(DEFAULT_FILE), true);
+            System.out.println("Carregando estado de " + ARQUIVO_PADRAO + "...");
+            return new EstadoInicial(SistemaInvestimentos.carregar(ARQUIVO_PADRAO), true);
         } catch (IOException | RuntimeException e) {
-            System.out.println("Não foi possível carregar " + DEFAULT_FILE + ": " + FormatadorTerminal.mensagemDe(e));
+            System.out.println("Não foi possível carregar " + ARQUIVO_PADRAO + ": "
+                    + FormatadorTerminal.mensagemDe(e));
             System.out.println("O sistema será iniciado vazio; o arquivo original será preservado.");
             return new EstadoInicial(new SistemaInvestimentos(), false);
         }
@@ -66,37 +90,53 @@ public final class Principal {
 
     /** Mantém o menu ativo até a saída explícita ou o fim da entrada. */
     private void executar() {
-        boolean running = true;
-        while (running) {
+        boolean emExecucao = true;
+        while (emExecucao) {
             try {
                 exibirMenu();
-                String option = input.lerLinha("Escolha uma opção: ");
-                switch (option) {
-                    case "1" -> cadastrarCliente();
-                    case "2" -> listarClientes();
-                    case "3" -> consultarCliente();
-                    case "4" -> cadastrarAplicacao();
-                    case "5" -> listarAplicacoes();
-                    case "6" -> lancarOperacao(TipoOperacao.DEPOSIT);
-                    case "7" -> lancarOperacao(TipoOperacao.WITHDRAWAL);
-                    case "8" -> exibirExtrato();
-                    case "9" -> exibirSaldoCliente();
-                    case "10" -> exibirSaldoSistema();
-                    case "11" -> atualizarAplicacoes();
-                    case "12" -> carregarEstado();
-                    case "13" -> salvarEstado();
-                    case "14" -> exibirCotacoes();
-                    case "0" -> running = false;
-                    default -> System.out.println("Opção inválida. Informe uma opção do menu.");
-                }
+                emExecucao = processarOpcao(entrada.lerLinha("Escolha uma opção: "));
             } catch (EntradaTerminal.EndOfInputException e) {
-                running = false;
+                emExecucao = false;
             } catch (RuntimeException e) {
                 System.out.println("Não foi possível concluir a operação: " + FormatadorTerminal.mensagemDe(e));
             }
         }
-        if (saveDefaultOnExit) {
-            salvarEm(DEFAULT_FILE);
+        encerrar();
+    }
+
+    /**
+     * Executa a ação associada à opção do menu.
+     *
+     * @return {@code false} quando o usuário pede para sair; {@code true} caso contrário
+     */
+    private boolean processarOpcao(String opcao) {
+        switch (opcao) {
+            case "1" -> cadastrarCliente();
+            case "2" -> listarClientes();
+            case "3" -> consultarCliente();
+            case "4" -> cadastrarAplicacao();
+            case "5" -> listarAplicacoes();
+            case "6" -> lancarOperacao(TipoOperacao.DEPOSIT);
+            case "7" -> lancarOperacao(TipoOperacao.WITHDRAWAL);
+            case "8" -> exibirExtrato();
+            case "9" -> exibirSaldoCliente();
+            case "10" -> exibirSaldoSistema();
+            case "11" -> atualizarAplicacoes();
+            case "12" -> carregarEstado();
+            case "13" -> salvarEstado();
+            case "14" -> exibirCotacoes();
+            case "0" -> {
+                return false;
+            }
+            default -> System.out.println("Opção inválida. Informe uma opção do menu.");
+        }
+        return true;
+    }
+
+    /** Salva no arquivo padrão, quando permitido, e finaliza a sessão. */
+    private void encerrar() {
+        if (salvarAutomaticamenteAoSair) {
+            salvarEm(ARQUIVO_PADRAO);
         } else {
             System.out.println("Salvamento automático ignorado para preservar o arquivo padrão.");
         }
@@ -126,60 +166,69 @@ public final class Principal {
                 """);
     }
 
+    // ---------------------------------------------------------------------
+    // Clientes
+    // ---------------------------------------------------------------------
+
     /** Cadastra os dados pessoais e bancários de um cliente. */
     private void cadastrarCliente() {
-        String name = input.lerObrigatorio("Nome completo: ");
-        String cpf = input.lerObrigatorio("CPF (será ocultado nas listagens): ");
-        String mobile = input.lerObrigatorio("Celular (com DDD): ");
-        int agency = input.lerInteiro("Número da agência: ", 1, Integer.MAX_VALUE);
-        long account = input.lerInteiroLongo("Número da conta: ", 1, Long.MAX_VALUE);
+        String nome = entrada.lerObrigatorio("Nome completo: ");
+        String cpf = entrada.lerObrigatorio("CPF (será ocultado nas listagens): ");
+        String celular = entrada.lerObrigatorio("Celular (com DDD): ");
+        int agencia = entrada.lerInteiro("Número da agência: ", 1, Integer.MAX_VALUE);
+        long conta = entrada.lerInteiroLongo("Número da conta: ", 1, Long.MAX_VALUE);
 
-        system.cadastrarCliente(new DadosPessoais(name, cpf, mobile), agency, account);
+        sistema.cadastrarCliente(new DadosPessoais(nome, cpf, celular), agencia, conta);
         System.out.println("Cliente cadastrado com sucesso.");
     }
 
     /** Lista clientes sem revelar o CPF completo. */
     private void listarClientes() {
-        List<ContaCliente> clients = system.listarClientes();
-        if (clients.isEmpty()) {
+        List<ContaCliente> clientes = sistema.listarClientes();
+        if (clientes.isEmpty()) {
             System.out.println("Não há clientes cadastrados.");
             return;
         }
         System.out.println("Clientes cadastrados:");
-        for (ContaCliente client : clients) {
-            DadosPessoais personalData = client.getDadosPessoais();
-            System.out.printf("- %s | CPF: %s%n", personalData.getNome(),
-                    FormatadorTerminal.mascararCpf(personalData.getCpf()));
+        for (ContaCliente cliente : clientes) {
+            DadosPessoais dados = cliente.getDadosPessoais();
+            System.out.printf("- %s | CPF: %s%n", dados.getNome(), FormatadorTerminal.mascararCpf(dados.getCpf()));
         }
     }
 
     /** Consulta os dados cadastrais e o saldo consolidado de um cliente. */
     private void consultarCliente() {
-        String clientId = input.lerObrigatorio("CPF/identificador do cliente: ");
-        Optional<ContaCliente> result = system.buscarCliente(clientId);
-        if (result.isEmpty()) {
+        String identificadorCliente = lerIdentificadorCliente();
+        Optional<ContaCliente> resultado = sistema.buscarCliente(identificadorCliente);
+        if (resultado.isEmpty()) {
             System.out.println("Cliente não encontrado.");
             return;
         }
-        ContaCliente client = result.get();
-        DadosPessoais personalData = client.getDadosPessoais();
-        System.out.println("Cliente: " + personalData.getNome());
-        System.out.println("CPF/identificador: " + FormatadorTerminal.mascararCpf(personalData.getCpf()));
-        System.out.println("Agência/conta: " + client.getNumeroAgencia() + "/" + client.getNumeroConta());
-        System.out.println("Celular: " + personalData.getCelular());
-        System.out.println("Saldo total: " + FormatadorTerminal.formatarMoeda(system.getSaldoCliente(clientId)));
+        ContaCliente cliente = resultado.get();
+        DadosPessoais dados = cliente.getDadosPessoais();
+        BigDecimal saldoTotal = sistema.getSaldoCliente(identificadorCliente);
+
+        System.out.println("Cliente: " + dados.getNome());
+        System.out.println("CPF/identificador: " + FormatadorTerminal.mascararCpf(dados.getCpf()));
+        System.out.println("Agência/conta: " + cliente.getNumeroAgencia() + "/" + cliente.getNumeroConta());
+        System.out.println("Celular: " + dados.getCelular());
+        System.out.println("Saldo total: " + FormatadorTerminal.formatarMoeda(saldoTotal));
     }
+
+    // ---------------------------------------------------------------------
+    // Aplicações e operações
+    // ---------------------------------------------------------------------
 
     /** Cadastra uma aplicação com termos padrão ou personalizados. */
     private void cadastrarAplicacao() {
-        String clientId = input.lerObrigatorio("CPF/identificador do cliente: ");
-        String name = input.lerObrigatorio("Nome da aplicação: ");
-        String number = input.lerObrigatorio("Número da aplicação: ");
-        BigDecimal initialValue = input.lerValorPositivo("Valor inicial: ");
-        BigDecimal rate = input.lerTaxaMensal();
-        AplicacaoFinanceira investment = new AplicacaoFinanceira(name, number, initialValue, rate);
+        String identificadorCliente = lerIdentificadorCliente();
+        String nome = entrada.lerObrigatorio("Nome da aplicação: ");
+        String numero = entrada.lerObrigatorio("Número da aplicação: ");
+        BigDecimal valorInicial = entrada.lerValorPositivo("Valor inicial: ");
+        BigDecimal taxaMensal = entrada.lerTaxaMensal();
+        AplicacaoFinanceira aplicacao = new AplicacaoFinanceira(nome, numero, valorInicial, taxaMensal);
 
-        if (input.lerSimNao("Usar configuração padrão da aplicação? (s/n): ")) {
+        if (entrada.lerSimNao("Usar configuração padrão da aplicação? (s/n): ")) {
             System.out.println("""
                     Configuração padrão da aplicação:
                     - rendimento diário; sem vencimento e sem permanência mínima;
@@ -187,149 +236,215 @@ public final class Principal {
                     - IOF de 3,5% nos primeiros 29 dias; IR regressivo.
                     """);
         } else {
-            TermosInvestimento.configurar(investment, input);
+            TermosInvestimento.configurar(aplicacao, entrada);
         }
-        system.cadastrarAplicacao(clientId, investment);
+        sistema.cadastrarAplicacao(identificadorCliente, aplicacao);
         System.out.println("Aplicação cadastrada com sucesso.");
     }
 
     /** Lista os dados principais das aplicações de um cliente. */
     private void listarAplicacoes() {
-        String clientId = input.lerObrigatorio("CPF/identificador do cliente: ");
-        List<AplicacaoFinanceira> investments = system.listarAplicacoes(clientId);
-        if (investments.isEmpty()) {
+        String identificadorCliente = lerIdentificadorCliente();
+        List<AplicacaoFinanceira> aplicacoes = sistema.listarAplicacoes(identificadorCliente);
+        if (aplicacoes.isEmpty()) {
             System.out.println("O cliente não possui aplicações cadastradas.");
             return;
         }
-        System.out.println("Aplicações de " + FormatadorTerminal.mascararCpf(clientId) + ":");
-        for (AplicacaoFinanceira investment : investments) {
+        System.out.println("Aplicações de " + FormatadorTerminal.mascararCpf(identificadorCliente) + ":");
+        for (AplicacaoFinanceira aplicacao : aplicacoes) {
             System.out.printf("- %s | número: %s | saldo: %s | aporte inicial: %s | taxa mensal: %s%n",
-                    investment.getNome(), investment.getNumero(), FormatadorTerminal.formatarMoeda(investment.getSaldo()),
-                    FormatadorTerminal.formatarMoeda(investment.getValorInicial()), investment.getTaxaMensal());
+                    aplicacao.getNome(),
+                    aplicacao.getNumero(),
+                    FormatadorTerminal.formatarMoeda(aplicacao.getSaldo()),
+                    FormatadorTerminal.formatarMoeda(aplicacao.getValorInicial()),
+                    aplicacao.getTaxaMensal());
         }
     }
 
     /** Registra um depósito ou uma retirada na aplicação indicada. */
-    private void lancarOperacao(TipoOperacao type) {
-        String clientId = input.lerObrigatorio("CPF/identificador do cliente: ");
-        String investmentId = input.lerObrigatorio("Código da aplicação: ");
-        LocalDate date = input.lerData("Data da operação (AAAA-MM-DD): ");
-        BigDecimal amount = input.lerValorPositivo("Valor: ");
-        String description = input.lerObrigatorio("Descrição: ");
-        OperacaoFinanceira operation = new OperacaoFinanceira(date, amount, description, type);
-        system.registrarOperacao(clientId, investmentId, operation);
-        String label = type == TipoOperacao.DEPOSIT ? "Depósito" : "Retirada";
-        System.out.println(label + " lançado com sucesso.");
+    private void lancarOperacao(TipoOperacao tipo) {
+        String identificadorCliente = lerIdentificadorCliente();
+        String identificadorAplicacao = lerIdentificadorAplicacao();
+        LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
+        BigDecimal valor = entrada.lerValorPositivo("Valor: ");
+        String descricao = entrada.lerObrigatorio("Descrição: ");
+
+        OperacaoFinanceira operacao = new OperacaoFinanceira(data, valor, descricao, tipo);
+        sistema.registrarOperacao(identificadorCliente, identificadorAplicacao, operacao);
+
+        String mensagemSucesso = switch (tipo) {
+            case DEPOSIT -> "Depósito lançado com sucesso.";
+            case WITHDRAWAL -> "Retirada lançada com sucesso.";
+        };
+        System.out.println(mensagemSucesso);
     }
 
-    /** Exibe o extrato no período escolhido ou nos últimos 30 dias. */
+    /** Exibe o extrato no período escolhido ou nos últimos {@value #DIAS_EXTRATO_PADRAO} dias. */
     private void exibirExtrato() {
-        String clientId = input.lerObrigatorio("CPF/identificador do cliente: ");
-        String investmentId = input.lerObrigatorio("Código da aplicação: ");
-        LocalDate from;
-        LocalDate to;
-        if (input.lerSimNao("Usar os últimos 30 dias? (s/n): ")) {
-            to = LocalDate.now();
-            from = to.minusDays(29);
+        String identificadorCliente = lerIdentificadorCliente();
+        String identificadorAplicacao = lerIdentificadorAplicacao();
+
+        LocalDate dataInicial;
+        LocalDate dataFinal;
+        if (entrada.lerSimNao("Usar os últimos " + DIAS_EXTRATO_PADRAO + " dias? (s/n): ")) {
+            dataFinal = LocalDate.now();
+            // O dia atual já conta como um dos dias do período.
+            dataInicial = dataFinal.minusDays(DIAS_EXTRATO_PADRAO - 1L);
         } else {
-            from = input.lerData("Data inicial (AAAA-MM-DD): ");
-            to = input.lerData("Data final (AAAA-MM-DD): ");
+            dataInicial = entrada.lerData("Data inicial " + FORMATO_DATA);
+            dataFinal = entrada.lerData("Data final " + FORMATO_DATA);
         }
-        if (from.isAfter(to)) {
+        if (dataInicial.isAfter(dataFinal)) {
             System.out.println("Período inválido: a data inicial deve ser anterior ou igual à final.");
             return;
         }
-        List<OperacaoFinanceira> operations = system.obterExtrato(clientId, investmentId, from, to);
-        if (operations.isEmpty()) {
+
+        List<OperacaoFinanceira> operacoes =
+                sistema.obterExtrato(identificadorCliente, identificadorAplicacao, dataInicial, dataFinal);
+        if (operacoes.isEmpty()) {
             System.out.println("Não há operações no período informado.");
             return;
         }
-        System.out.printf("Extrato de %s, de %s a %s:%n", FormatadorTerminal.mascararCpf(clientId), from, to);
-        for (OperacaoFinanceira operation : operations) {
-            System.out.printf("- %s | %s | %s | %s%n", operation.data(), operation.tipo(),
-                    FormatadorTerminal.formatarMoeda(operation.valor()), operation.descricao());
+        System.out.printf("Extrato de %s, de %s a %s:%n",
+                FormatadorTerminal.mascararCpf(identificadorCliente), dataInicial, dataFinal);
+        for (OperacaoFinanceira operacao : operacoes) {
+            System.out.printf("- %s | %s | %s | %s%n",
+                    operacao.data(),
+                    operacao.tipo(),
+                    FormatadorTerminal.formatarMoeda(operacao.valor()),
+                    operacao.descricao());
         }
     }
 
-    /** Consulta o saldo da aplicação escolhida ou o total do cliente. */
+    // ---------------------------------------------------------------------
+    // Saldos e atualização
+    // ---------------------------------------------------------------------
+
+    /** Consulta o saldo da aplicação escolhida ou, se nenhuma for informada, o total do cliente. */
     private void exibirSaldoCliente() {
-        String clientId = input.lerObrigatorio("CPF/identificador do cliente: ");
-        String investmentId = input.lerLinha("Código da aplicação (vazio para saldo total do cliente): ").trim();
-        BigDecimal balance = investmentId.isEmpty()
-                ? system.getSaldoCliente(clientId)
-                : system.getSaldo(clientId, investmentId);
-        System.out.println("Saldo: " + FormatadorTerminal.formatarMoeda(balance));
+        String identificadorCliente = lerIdentificadorCliente();
+        String identificadorAplicacao =
+                entrada.lerLinha("Código da aplicação (vazio para saldo total do cliente): ").trim();
+
+        BigDecimal saldo = identificadorAplicacao.isEmpty()
+                ? sistema.getSaldoCliente(identificadorCliente)
+                : sistema.getSaldo(identificadorCliente, identificadorAplicacao);
+        System.out.println("Saldo: " + FormatadorTerminal.formatarMoeda(saldo));
     }
 
     /** Consulta o saldo líquido total do sistema. */
     private void exibirSaldoSistema() {
-        System.out.println("Saldo total do sistema: " + FormatadorTerminal.formatarMoeda(system.getSaldoSistema()));
+        System.out.println("Saldo total do sistema: " + FormatadorTerminal.formatarMoeda(sistema.getSaldoSistema()));
     }
 
-    /** Atualiza as aplicações para a data informada. */
+    /**
+     * Atualiza as aplicações para a data informada.
+     *
+     * <p>O serviço ignora silenciosamente datas de fim de semana; a mensagem
+     * exibida aqui apenas reflete essa regra para o usuário.</p>
+     */
     private void atualizarAplicacoes() {
-        LocalDate date = input.lerData("Data de atualização (AAAA-MM-DD): ");
-        system.atualizarTodos(date);
-        if (date.getDayOfWeek().getValue() >= 6) {
+        LocalDate data = entrada.lerData("Data de atualização " + FORMATO_DATA);
+        sistema.atualizarTodos(data);
+        if (ehFimDeSemana(data)) {
             System.out.println("A data informada é fim de semana; o serviço não processou a atualização.");
         } else {
             System.out.println("Aplicações atualizadas com sucesso.");
         }
     }
 
-    /** Carrega um estado e só o substitui depois da leitura bem-sucedida. */
+    // ---------------------------------------------------------------------
+    // Persistência
+    // ---------------------------------------------------------------------
+
+    /** Carrega um estado e só substitui o atual depois de uma leitura bem-sucedida. */
     private void carregarEstado() {
-        Path path = input.lerCaminho("Caminho do arquivo para carregar: ");
+        Path caminho = entrada.lerCaminho("Caminho do arquivo para carregar: ");
         try {
-            system = SistemaInvestimentos.carregar(path);
-            System.out.println("Estado carregado com sucesso de " + path + ".");
-        } catch (IOException e) {
-            System.out.println("Falha ao carregar " + path + ": " + FormatadorTerminal.mensagemDe(e));
+            sistema = SistemaInvestimentos.carregar(caminho);
+            System.out.println("Estado carregado com sucesso de " + caminho + ".");
+        } catch (IOException | RuntimeException e) {
+            System.out.println("Falha ao carregar " + caminho + ": " + FormatadorTerminal.mensagemDe(e));
         }
     }
 
     /** Salva o estado no caminho solicitado. */
     private void salvarEstado() {
-        salvarEm(input.lerCaminho("Caminho do arquivo para salvar: "));
+        salvarEm(entrada.lerCaminho("Caminho do arquivo para salvar: "));
     }
 
-    /** Cria a pasta pai necessária e informa qualquer falha de persistência. */
-    private boolean salvarEm(Path path) {
+    /**
+     * Grava o estado em {@code caminho}, criando a pasta pai se necessário.
+     *
+     * <p>Um salvamento bem-sucedido no arquivo padrão reativa o salvamento
+     * automático, pois o conteúdo dele passa a ser o estado atual.</p>
+     */
+    private void salvarEm(Path caminho) {
         try {
-            Path parent = path.toAbsolutePath().getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
+            Path pastaPai = caminho.toAbsolutePath().getParent();
+            if (pastaPai != null) {
+                Files.createDirectories(pastaPai);
             }
-            system.salvar(path);
-            if (path.toAbsolutePath().normalize().equals(DEFAULT_FILE.toAbsolutePath().normalize())) {
-                saveDefaultOnExit = true;
+            sistema.salvar(caminho);
+            if (ehArquivoPadrao(caminho)) {
+                salvarAutomaticamenteAoSair = true;
             }
-            System.out.println("Estado salvo com sucesso em " + path + ".");
-            return true;
+            System.out.println("Estado salvo com sucesso em " + caminho + ".");
         } catch (IOException | RuntimeException e) {
-            System.out.println("Falha ao salvar " + path + ": " + FormatadorTerminal.mensagemDe(e));
-            return false;
+            System.out.println("Falha ao salvar " + caminho + ": " + FormatadorTerminal.mensagemDe(e));
         }
     }
 
+    // ---------------------------------------------------------------------
+    // Cotações
+    // ---------------------------------------------------------------------
+
     /** Consulta e exibe as cotações disponíveis no servidor TCP. */
     private void exibirCotacoes() {
-        String host = input.lerObrigatorio("Servidor de cotações (host): ");
-        int port = input.lerInteiro("Porta: ", 1, 65535);
+        String host = entrada.lerObrigatorio("Servidor de cotações (host): ");
+        int porta = entrada.lerInteiro("Porta: ", 1, PORTA_MAXIMA);
         try {
-            Map<String, BigDecimal> quotes = new ClienteCotacoes(host, port).obterCotacoes();
-            if (quotes.isEmpty()) {
+            Map<String, BigDecimal> cotacoes = new ClienteCotacoes(host, porta).obterCotacoes();
+            if (cotacoes.isEmpty()) {
                 System.out.println("O servidor não disponibilizou cotações.");
                 return;
             }
             System.out.println("Cotações disponíveis no servidor:");
-            for (Map.Entry<String, BigDecimal> quote : quotes.entrySet()) {
-                System.out.printf("- %s: %s%n", quote.getKey(), FormatadorTerminal.formatarMoeda(quote.getValue()));
+            for (Map.Entry<String, BigDecimal> cotacao : cotacoes.entrySet()) {
+                System.out.printf("- %s: %s%n", cotacao.getKey(), FormatadorTerminal.formatarMoeda(cotacao.getValue()));
             }
         } catch (IOException | RuntimeException e) {
             System.out.println("Falha ao consultar o servidor de cotações: " + FormatadorTerminal.mensagemDe(e));
         }
     }
 
-    private record EstadoInicial(SistemaInvestimentos system, boolean saveDefaultOnExit) { }
+    // ---------------------------------------------------------------------
+    // Auxiliares
+    // ---------------------------------------------------------------------
+
+    private String lerIdentificadorCliente() {
+        return entrada.lerObrigatorio(PROMPT_CLIENTE);
+    }
+
+    private String lerIdentificadorAplicacao() {
+        return entrada.lerObrigatorio(PROMPT_APLICACAO);
+    }
+
+    private static boolean ehFimDeSemana(LocalDate data) {
+        DayOfWeek dia = data.getDayOfWeek();
+        return dia == DayOfWeek.SATURDAY || dia == DayOfWeek.SUNDAY;
+    }
+
+    /** Compara caminhos já normalizados para reconhecer variações como {@code ./data/sgi.db}. */
+    private static boolean ehArquivoPadrao(Path caminho) {
+        return caminho.toAbsolutePath().normalize().equals(ARQUIVO_PADRAO.toAbsolutePath().normalize());
+    }
+
+    /**
+     * Estado com que a aplicação é iniciada.
+     *
+     * @param sistema                     sistema carregado do disco ou recém-criado
+     * @param salvarAutomaticamenteAoSair se é seguro sobrescrever o arquivo padrão ao sair
+     */
+    private record EstadoInicial(SistemaInvestimentos sistema, boolean salvarAutomaticamenteAoSair) { }
 }

@@ -59,7 +59,7 @@ public final class TesteSistemaInvestimentos {
             }
 
             @Override
-            public void setCadastro(LocalDate date, BigDecimal amount, String description, TipoOperacao type) {
+            public void setCadastro(LocalDate data, BigDecimal valor, String descricao, TipoOperacao tipo) {
                 throw new AssertionError("O construtor não deve despachar para métodos sobrescrevíveis.");
             }
         }
@@ -81,34 +81,34 @@ public final class TesteSistemaInvestimentos {
         check(AplicacaoFinanceira.indiceDiaSemana(LocalDate.of(2026, 10, 25)) == 1, "domingo deve mapear para um");
 
         // Configura uma aplicação com termos não padrão e testa o fluxo de operações.
-        SistemaInvestimentos system = new SistemaInvestimentos();
-        system.cadastrarCliente(person, 12, 3456);
-        AplicacaoFinanceira investment = new AplicacaoFinanceira("Reserva", "INV-1", new BigDecimal("100.00"),
+        SistemaInvestimentos sistema = new SistemaInvestimentos();
+        sistema.cadastrarCliente(person, 12, 3456);
+        AplicacaoFinanceira aplicacao = new AplicacaoFinanceira("Reserva", "INV-1", new BigDecimal("100.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
-        investment.setPeriodicidadeRendimento(PeriodicidadeRendimento.QUARTERLY_90_DAYS);
-        investment.setDiasVencimento(365);
-        investment.setDiasPermanenciaMinima(30);
-        investment.setFrequenciaResgate(FrequenciaResgate.MONTHLY);
-        investment.setOpcaoIOF(OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS);
-        investment.setOpcaoIR(OpcaoIR.EXEMPT);
-        system.cadastrarAplicacao(person.getCpf(), investment);
-        system.atualizarTodos(LocalDate.of(2026, 1, 3)); // sábado: não atualiza
-        check(investment.getSaldo().compareTo(new BigDecimal("100.00")) == 0, "fim de semana sem rendimento");
-        system.atualizarTodos(LocalDate.of(2026, 1, 2));
-        check(investment.getSaldo().compareTo(new BigDecimal("100.10")) == 0, "rendimento diário arredondado");
-        check(!investment.ehDataDeRendimento() && !investment.podeResgatar(), "periodicidade e carência antes do prazo");
-        system.registrarOperacao(person.getCpf(), "INV-1",
+        aplicacao.setPeriodicidadeRendimento(PeriodicidadeRendimento.QUARTERLY_90_DAYS);
+        aplicacao.setDiasVencimento(365);
+        aplicacao.setDiasPermanenciaMinima(30);
+        aplicacao.setFrequenciaResgate(FrequenciaResgate.MONTHLY);
+        aplicacao.setOpcaoIOF(OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS);
+        aplicacao.setOpcaoIR(OpcaoIR.EXEMPT);
+        sistema.cadastrarAplicacao(person.getCpf(), aplicacao);
+        sistema.atualizarTodos(LocalDate.of(2026, 1, 3)); // sábado: não atualiza
+        check(aplicacao.getSaldo().compareTo(new BigDecimal("100.00")) == 0, "fim de semana sem rendimento");
+        sistema.atualizarTodos(LocalDate.of(2026, 1, 2));
+        check(aplicacao.getSaldo().compareTo(new BigDecimal("100.10")) == 0, "rendimento diário arredondado");
+        check(!aplicacao.ehDataDeRendimento() && !aplicacao.podeResgatar(), "periodicidade e carência antes do prazo");
+        sistema.registrarOperacao(person.getCpf(), "INV-1",
                 new OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("5"), "Aporte", TipoOperacao.DEPOSIT));
-        check(system.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
+        check(sistema.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
                 LocalDate.of(2026, 1, 2)).size() == 1, "extrato inclusivo");
 
         // Salva e restaura todos os dados, inclusive o estado do ciclo de rendimento.
-        Path file = Path.of(".investment-system-self-test.tsv");
+        Path arquivo = Path.of(".aplicacao-sistema-self-test.tsv");
         try {
-            system.salvar(file);
-            SistemaInvestimentos restored = SistemaInvestimentos.carregar(file);
+            sistema.salvar(arquivo);
+            SistemaInvestimentos restored = SistemaInvestimentos.carregar(arquivo);
             check(restored.listarAplicacoes(person.getCpf()).size() == 1, "investimento restaurado");
-            check(restored.getSaldo(person.getCpf(), "INV-1").compareTo(system.getSaldo(person.getCpf(), "INV-1")) == 0,
+            check(restored.getSaldo(person.getCpf(), "INV-1").compareTo(sistema.getSaldo(person.getCpf(), "INV-1")) == 0,
                     "saldo restaurado");
             check(restored.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
                     LocalDate.of(2026, 1, 2)).size() == 1, "operação restaurada");
@@ -121,17 +121,17 @@ public final class TesteSistemaInvestimentos {
             check(restoredInvestment.getOpcaoIOF() == OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS,
                     "opção IOF restaurada");
             check(restoredInvestment.getOpcaoIR() == OpcaoIR.EXEMPT, "opção IR restaurada");
-            check(restoredInvestment.getRendimentosPendentes().compareTo(investment.getRendimentosPendentes()) == 0,
+            check(restoredInvestment.getRendimentosPendentes().compareTo(aplicacao.getRendimentosPendentes()) == 0,
                     "rendimento pendente restaurado");
-            check(restoredInvestment.getDiasDesdeRendimento() == investment.getDiasDesdeRendimento(),
+            check(restoredInvestment.getDiasDesdeRendimento() == aplicacao.getDiasDesdeRendimento(),
                     "contador de periodicidade restaurado");
-            system.atualizarTodos(LocalDate.of(2026, 4, 1));
+            sistema.atualizarTodos(LocalDate.of(2026, 4, 1));
             restored.atualizarTodos(LocalDate.of(2026, 4, 1));
             check(restored.getSaldo(person.getCpf(), "INV-1").compareTo(
-                    system.getSaldo(person.getCpf(), "INV-1")) == 0, "capitalização após restauração");
-            check(investment.getRendimentosPendentes().signum() == 0, "rendimento trimestral capitalizado no dia 90");
+                    sistema.getSaldo(person.getCpf(), "INV-1")) == 0, "capitalização após restauração");
+            check(aplicacao.getRendimentosPendentes().signum() == 0, "rendimento trimestral capitalizado no dia 90");
         } finally {
-            Files.deleteIfExists(file);
+            Files.deleteIfExists(arquivo);
         }
 
         // Rendimentos periódicos ficam pendentes até o crédito configurado.
@@ -183,7 +183,7 @@ public final class TesteSistemaInvestimentos {
 
         boolean insufficientFundsRejected = false;
         try {
-            system.registrarOperacao(person.getCpf(), "INV-1", new OperacaoFinanceira(LocalDate.of(2026, 4, 1),
+            sistema.registrarOperacao(person.getCpf(), "INV-1", new OperacaoFinanceira(LocalDate.of(2026, 4, 1),
                     new BigDecimal("9999"), "Retirada", TipoOperacao.WITHDRAWAL));
         } catch (IllegalArgumentException expected) {
             insufficientFundsRejected = true;
@@ -234,7 +234,7 @@ public final class TesteSistemaInvestimentos {
         check(bands.getIR().compareTo(new BigDecimal("15.00")) == 0, "IR 15% após 720 dias");
 
         // Formatos antigos continuam legíveis e recebem defaults documentados.
-        Path legacyFile = Path.of(".investment-system-v1-self-test.tsv");
+        Path legacyFile = Path.of(".aplicacao-sistema-v1-self-test.tsv");
         try {
             Files.write(legacyFile, List.of(
                     "NATIONAL-ECONOMIC\t1",
@@ -251,7 +251,7 @@ public final class TesteSistemaInvestimentos {
         }
 
         // O formato intermediário mantém termos, ainda que derive o contador pendente.
-        Path version2File = Path.of(".investment-system-v2-self-test.tsv");
+        Path version2File = Path.of(".aplicacao-sistema-v2-self-test.tsv");
         try {
             Files.write(version2File, List.of(
                     "NATIONAL-ECONOMIC\t2",
@@ -267,7 +267,7 @@ public final class TesteSistemaInvestimentos {
         }
 
         // Arquivos corrompidos não podem incluir operação anterior à aplicação.
-        Path invalidHistoryFile = Path.of(".investment-system-invalid-history-self-test.tsv");
+        Path invalidHistoryFile = Path.of(".aplicacao-sistema-invalid-history-self-test.tsv");
         try {
             Files.write(invalidHistoryFile, List.of(
                     "NATIONAL-ECONOMIC\t3",

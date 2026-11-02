@@ -16,15 +16,15 @@ public enum FrequenciaResgate {
     /** Resgates em intervalos de 365 dias. */
     YEARLY(365);
 
-    private final int days;
+    private final int diasIntervalo;
 
     /** Associa a frequência ao intervalo que ela representa. */
-    FrequenciaResgate(int days) {
-        this.days = days;
+    FrequenciaResgate(int diasIntervalo) {
+        this.diasIntervalo = diasIntervalo;
     }
 
     /** Retorna o intervalo em dias corridos. */
     public int dias() {
-        return days;
+        return diasIntervalo;
     }
 }

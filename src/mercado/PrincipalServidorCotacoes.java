@@ -21,16 +21,16 @@ public final class PrincipalServidorCotacoes {
                     "Uso: PrincipalServidorCotacoes [porta [SELICRA CDIR USD EUR]]");
         }
 
-        int port = args.length == 0 ? DEFAULT_PORT : Integer.parseInt(args[0]);
-        BigDecimal[] quotes = interpretarCotacoes(args);
-        ServidorCotacoes server = new ServidorCotacoes(port, quotes[0], quotes[1], quotes[2], quotes[3]);
+        int porta = args.length == 0 ? DEFAULT_PORT : Integer.parseInt(args[0]);
+        BigDecimal[] cotacoes = interpretarCotacoes(args);
+        ServidorCotacoes server = new ServidorCotacoes(porta, cotacoes[0], cotacoes[1], cotacoes[2], cotacoes[3]);
         server.start();
 
         System.out.println("Servidor de cotações ativo na porta " + server.getPorta() + ".");
-        System.out.println("Configuração estática: SELICRA=" + quotes[0].toPlainString()
-                + ", CDIR=" + quotes[1].toPlainString()
-                + ", USD=" + quotes[2].toPlainString()
-                + ", EUR=" + quotes[3].toPlainString() + ".");
+        System.out.println("Configuração estática: SELICRA=" + cotacoes[0].toPlainString()
+                + ", CDIR=" + cotacoes[1].toPlainString()
+                + ", USD=" + cotacoes[2].toPlainString()
+                + ", EUR=" + cotacoes[3].toPlainString() + ".");
         if (args.length < 5) {
             System.out.println("Defaults em 0.00; USD/EUR são configuração manual, sem dados ao vivo.");
         }
@@ -45,18 +45,18 @@ public final class PrincipalServidorCotacoes {
     }
 
     private static BigDecimal[] interpretarCotacoes(String[] args) {
-        BigDecimal[] quotes = new BigDecimal[4];
-        for (int i = 0; i < quotes.length; i++) {
-            quotes[i] = new BigDecimal(args.length == 5 ? args[i + 1] : DEFAULT_QUOTE);
+        BigDecimal[] cotacoes = new BigDecimal[4];
+        for (int i = 0; i < cotacoes.length; i++) {
+            cotacoes[i] = new BigDecimal(args.length == 5 ? args[i + 1] : DEFAULT_QUOTE);
         }
-        return quotes;
+        return cotacoes;
     }
 
     private static void encerrarServidor(ServidorCotacoes server) {
         try {
             server.close();
-        } catch (IOException exception) {
-            System.err.println("Falha ao encerrar o servidor: " + exception.getMessage());
+        } catch (IOException excecao) {
+            System.err.println("Falha ao encerrar o servidor: " + excecao.getMessage());
         }
     }
 }

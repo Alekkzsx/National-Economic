@@ -13,27 +13,27 @@ public final class TermosInvestimento {
     private TermosInvestimento() { }
 
     /** Solicita prazos e opções de rendimento para a aplicação. */
-    public static void configurar(AplicacaoFinanceira investment, EntradaTerminal input) {
-        int maturityDays = input.lerInteiro("Dias até o vencimento (0 = sem vencimento): ",
+    public static void configurar(AplicacaoFinanceira aplicacao, EntradaTerminal entrada) {
+        int diasVencimento = entrada.lerInteiro("Dias até o vencimento (0 = sem vencimento): ",
                 0, Integer.MAX_VALUE);
-        investment.setDiasVencimento(maturityDays);
+        aplicacao.setDiasVencimento(diasVencimento);
 
-        int maximumStay = maturityDays == 0 ? Integer.MAX_VALUE : maturityDays;
-        int minimumStay = input.lerInteiro("Permanência mínima em dias: ", 0, maximumStay);
-        investment.setDiasPermanenciaMinima(minimumStay);
+        int maximumStay = diasVencimento == 0 ? Integer.MAX_VALUE : diasVencimento;
+        int minimumStay = entrada.lerInteiro("Permanência mínima em dias: ", 0, maximumStay);
+        aplicacao.setDiasPermanenciaMinima(minimumStay);
 
-        PeriodicidadeRendimento[] yieldOptions = maturityDays == 0
+        PeriodicidadeRendimento[] yieldOptions = diasVencimento == 0
                 ? Arrays.stream(PeriodicidadeRendimento.values())
                         .filter(period -> period != PeriodicidadeRendimento.AT_MATURITY)
                         .toArray(PeriodicidadeRendimento[]::new)
                 : PeriodicidadeRendimento.values();
-        investment.setPeriodicidadeRendimento(input.lerOpcaoEnum("Periodicidade de rendimento", yieldOptions,
+        aplicacao.setPeriodicidadeRendimento(entrada.lerOpcaoEnum("Periodicidade de rendimento", yieldOptions,
                 TermosInvestimento::rotuloPeriodicidadeRendimento));
-        investment.setFrequenciaResgate(input.lerOpcaoEnum("Frequência de resgate",
+        aplicacao.setFrequenciaResgate(entrada.lerOpcaoEnum("Frequência de resgate",
                 FrequenciaResgate.values(), TermosInvestimento::rotuloFrequenciaResgate));
-        investment.setOpcaoIOF(input.lerOpcaoEnum("Opção de IOF", OpcaoIOF.values(),
+        aplicacao.setOpcaoIOF(entrada.lerOpcaoEnum("Opção de IOF", OpcaoIOF.values(),
                 TermosInvestimento::rotuloOpcaoIOF));
-        investment.setOpcaoIR(input.lerOpcaoEnum("Opção de IR", OpcaoIR.values(),
+        aplicacao.setOpcaoIR(entrada.lerOpcaoEnum("Opção de IR", OpcaoIR.values(),
                 TermosInvestimento::rotuloOpcaoIR));
     }
 
@@ -61,16 +61,16 @@ public final class TermosInvestimento {
     }
 
     /** Descreve as opções de IOF e IR para o menu. */
-    private static String rotuloOpcaoIOF(OpcaoIOF option) {
-        return switch (option) {
+    private static String rotuloOpcaoIOF(OpcaoIOF opcaoMenu) {
+        return switch (opcaoMenu) {
             case EXEMPT -> "isento";
             case THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS -> "3,5% nos primeiros 29 dias";
             case THREE_POINT_FIVE_PERCENT_ALWAYS -> "3,5% durante todo o prazo";
         };
     }
 
-    private static String rotuloOpcaoIR(OpcaoIR option) {
-        return switch (option) {
+    private static String rotuloOpcaoIR(OpcaoIR opcaoMenu) {
+        return switch (opcaoMenu) {
             case EXEMPT -> "isento";
             case REGRESSIVE -> "regressivo por prazo";
         };

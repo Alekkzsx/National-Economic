@@ -12,18 +12,18 @@ public final class ClienteCotacoes {
     private static final int TIMEOUT_MILLIS = 5_000;
 
     private final String host;
-    private final int port;
+    private final int porta;
 
     /** Cria o cliente após validar o endereço do servidor. */
-    public ClienteCotacoes(String host, int port) {
+    public ClienteCotacoes(String host, int porta) {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("O host não pode ser vazio.");
         }
-        if (port < 1 || port > 65_535) {
+        if (porta < 1 || porta > 65_535) {
             throw new IllegalArgumentException("A porta deve estar entre 1 e 65535.");
         }
         this.host = host;
-        this.port = port;
+        this.porta = porta;
     }
 
     /**
@@ -33,7 +33,7 @@ public final class ClienteCotacoes {
      */
     public Map<String, BigDecimal> obterCotacoes() throws IOException {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), TIMEOUT_MILLIS);
+            socket.connect(new InetSocketAddress(host, porta), TIMEOUT_MILLIS);
             socket.setSoTimeout(TIMEOUT_MILLIS);
             socket.getOutputStream().write(
                     (ProtocoloCotacoes.REQUEST + "\n").getBytes(StandardCharsets.US_ASCII));

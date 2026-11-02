@@ -11,42 +11,42 @@ import java.util.Objects;
  */
 public class DadosPessoais {
     /** Nome completo do titular. */
-    private String name;
+    private String nome;
     /** CPF normalizado, composto por onze dígitos. */
     private String cpf;
     /** Telefone normalizado, composto apenas por dígitos. */
     private String mobile;
 
     /** Cria os dados pessoais com nome, CPF e celular. */
-    public DadosPessoais(String name, String cpf, String mobile) {
-        this.name = validarNome(name);
+    public DadosPessoais(String nome, String cpf, String mobile) {
+        this.nome = validarNome(nome);
         this.cpf = validarCpf(cpf);
         this.mobile = validarCelular(mobile);
     }
 
     /** Cria os dados pessoais sem informar um celular. */
-    public DadosPessoais(String name, String cpf) {
-        this.name = validarNome(name);
+    public DadosPessoais(String nome, String cpf) {
+        this.nome = validarNome(nome);
         this.cpf = validarCpf(cpf);
         this.mobile = "";
     }
 
     /** Accessor conciso para o nome. */
-    public String nome() { return name; }
+    public String nome() { return nome; }
     /** Accessor conciso para o CPF normalizado. */
     public String cpf() { return cpf; }
     /** Accessor conciso para o celular normalizado. */
     public String celular() { return mobile; }
     /** Retorna o nome do titular. */
-    public String getNome() { return name; }
+    public String getNome() { return nome; }
     /** Retorna o CPF normalizado; evite exibi-lo sem máscara. */
     public String getCpf() { return cpf; }
     /** Retorna o celular normalizado. */
     public String getCelular() { return mobile; }
 
     /** Altera o nome depois de validar que não está vazio. */
-    public void setNome(String name) {
-        this.name = validarNome(name);
+    public void setNome(String nome) {
+        this.nome = validarNome(nome);
     }
 
     /** Altera o CPF depois de validar formato e dígitos verificadores. */
@@ -75,41 +75,41 @@ public class DadosPessoais {
     }
 
     /** Atualiza todos os campos atomicamente: nenhuma alteração ocorre se houver erro. */
-    public void setCadastro(String name, String cpf, String mobile) {
-        String validName = validarNome(name);
+    public void setCadastro(String nome, String cpf, String mobile) {
+        String validName = validarNome(nome);
         String validCpf = validarCpf(cpf);
         String validMobile = validarCelular(mobile);
-        this.name = validName;
+        this.nome = validName;
         this.cpf = validCpf;
         this.mobile = validMobile;
     }
 
     /** Sobrecarga que cadastra nome e CPF, deixando o celular vazio. */
-    public void setCadastro(String name, String cpf) {
-        String validName = validarNome(name);
+    public void setCadastro(String nome, String cpf) {
+        String validName = validarNome(nome);
         String validCpf = validarCpf(cpf);
-        this.name = validName;
+        this.nome = validName;
         this.cpf = validCpf;
         this.mobile = "";
     }
 
     /** Altera os três dados usando as mesmas validações do cadastro. */
-    public void alterarDados(String name, String cpf, String mobile) {
-        setCadastro(name, cpf, mobile);
+    public void alterarDados(String nome, String cpf, String mobile) {
+        setCadastro(nome, cpf, mobile);
     }
 
     /** Altera nome e celular sem modificar o CPF existente. */
-    public void alterarDados(String name, String mobile) {
-        String validName = validarNome(name);
+    public void alterarDados(String nome, String mobile) {
+        String validName = validarNome(nome);
         String validMobile = validarCelular(mobile);
-        this.name = validName;
+        this.nome = validName;
         this.mobile = validMobile;
     }
 
     /** Valida o nome e elimina espaços externos. */
-    private static String validarNome(String name) {
-        if (name == null || name.isBlank()) throw new IllegalArgumentException("Nome obrigatório.");
-        return name.trim();
+    private static String validarNome(String nome) {
+        if (nome == null || nome.isBlank()) throw new IllegalArgumentException("Nome obrigatório.");
+        return nome.trim();
     }
 
     /** Normaliza o CPF e confirma seus dígitos verificadores. */
@@ -129,9 +129,9 @@ public class DadosPessoais {
     }
 
     /** Remove formatação não numérica de CPF ou telefone. */
-    private static String somenteDigitos(String value) {
-        Objects.requireNonNull(value, "Valor obrigatório.");
-        String digits = value.replaceAll("\\D", "");
+    private static String somenteDigitos(String valor) {
+        Objects.requireNonNull(valor, "Valor obrigatório.");
+        String digits = valor.replaceAll("\\D", "");
         if (digits.isEmpty()) throw new IllegalArgumentException("Valor inválido.");
         return digits;
     }
@@ -139,7 +139,7 @@ public class DadosPessoais {
     /** Exibe o cadastro com o CPF parcialmente oculto. */
     @Override
     public String toString() {
-        return "DadosPessoais{name='" + name + "', cpf='***.***.***-" + cpf.substring(9) +
+        return "DadosPessoais{nome='" + nome + "', cpf='***.***.***-" + cpf.substring(9) +
                 "', mobile='" + mobile + "'}";
     }
 }

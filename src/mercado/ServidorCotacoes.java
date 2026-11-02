@@ -15,80 +15,80 @@ import java.util.concurrent.TimeUnit;
 
 /** Servidor TCP de cotações estáticas, com capacidade de atendimento limitada. */
 public final class ServidorCotacoes implements AutoCloseable {
-    private static final int CLIENT_TIMEOUT_MILLIS = 5_000;
-    private static final int WORKER_COUNT =
+    private static final int TEMPO_LIMITE_CLIENTE_MILISSEGUNDOS = 5_000;
+    private static final int QUANTIDADE_TRABALHADORES =
             Math.max(2, Math.min(16, Runtime.getRuntime().availableProcessors()));
-    private static final int MAX_QUEUED_CLIENTS = 64;
+    private static final int MAXIMO_CLIENTES_NA_FILA = 64;
 
-    private final ServerSocket serverSocket;
-    private final Map<String, BigDecimal> quotes;
-    private final ThreadPoolExecutor workers;
-    private final Set<Socket> clientSockets = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final ServerSocket socketServidor;
+    private final Map<String, BigDecimal> cotacoes;
+    private final ThreadPoolExecutor trabalhadores;
+    private final Set<Socket> socketsClientes = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    private volatile boolean closed;
-    private Thread acceptThread;
+    private volatile boolean encerrado;
+    private Thread threadAceitacao;
 
     /**
      * Cria o servidor. A porta zero solicita ao sistema uma porta TCP disponível.
      *
-     * @param port porta entre zero e 65535
-     * @param quotes mapa com SELICRA, CDIR, USD e EUR
+     * @param porta porta entre zero e 65535
+     * @param cotacoes mapa com SELICRA, CDIR, USD e EUR
      */
-    public ServidorCotacoes(int port, Map<String, BigDecimal> quotes) throws IOException {
-        if (port < 0 || port > 65_535) {
+    public ServidorCotacoes(int porta, Map<String, BigDecimal> cotacoes) throws IOException {
+        if (porta < 0 || porta > 65_535) {
             throw new IllegalArgumentException("A porta deve estar entre 0 e 65535.");
         }
-        this.quotes = ProtocoloCotacoes.validateQuotes(quotes);
-        serverSocket = new ServerSocket(port);
-        workers = new ThreadPoolExecutor(
-                WORKER_COUNT,
-                WORKER_COUNT,
+        this.cotacoes = ProtocoloCotacoes.validateQuotes(cotacoes);
+        socketServidor = new ServerSocket(porta);
+        trabalhadores = new ThreadPoolExecutor(
+                QUANTIDADE_TRABALHADORES,
+                QUANTIDADE_TRABALHADORES,
                 0L,
                 TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(MAX_QUEUED_CLIENTS),
-                task -> new Thread(task, "mercado-client"),
+                new ArrayBlockingQueue<>(MAXIMO_CLIENTES_NA_FILA),
+                task -> new Thread(task, "mercado-cliente"),
                 new ThreadPoolExecutor.AbortPolicy());
     }
 
     /** Cria o servidor a partir das quatro taxas, na ordem definida pelo protocolo. */
-    public ServidorCotacoes(int port, BigDecimal selicra, BigDecimal cdir,
+    public ServidorCotacoes(int porta, BigDecimal selicra, BigDecimal cdir,
                         BigDecimal usd, BigDecimal eur) throws IOException {
-        this(port, mapaCotacoes(selicra, cdir, usd, eur));
+        this(porta, mapaCotacoes(selicra, cdir, usd, eur));
     }
 
     /** Inicia o único laço de aceitação deste servidor. */
     public synchronized void start() {
-        if (closed) {
+        if (encerrado) {
             throw new IllegalStateException("O servidor já foi fechado.");
         }
-        if (acceptThread != null) {
+        if (threadAceitacao != null) {
             throw new IllegalStateException("O servidor já foi iniciado.");
         }
-        acceptThread = new Thread(this::aceitarClientes, "mercado-accept");
-        acceptThread.start();
+        threadAceitacao = new Thread(this::aceitarClientes, "mercado-accept");
+        threadAceitacao.start();
     }
 
     /** Retorna a porta efetiva, útil quando o servidor foi criado com porta zero. */
     public int getPorta() {
-        return serverSocket.getLocalPort();
+        return socketServidor.getLocalPort();
     }
 
     /** Aceita conexões e entrega cada uma ao pool limitado de trabalhadores. */
     private void aceitarClientes() {
-        while (!closed) {
+        while (!encerrado) {
             try {
-                Socket client = serverSocket.accept();
-                clientSockets.add(client);
+                Socket cliente = socketServidor.accept();
+                socketsClientes.add(cliente);
                 try {
-                    workers.execute(() -> processarCliente(client));
-                } catch (java.util.concurrent.RejectedExecutionException exception) {
+                    trabalhadores.execute(() -> processarCliente(cliente));
+                } catch (java.util.concurrent.RejectedExecutionException excecao) {
                     // Sobrecarga: não manter conexões abertas esperando por uma vaga.
-                    clientSockets.remove(client);
-                    encerrarSilenciosamente(client);
+                    socketsClientes.remove(cliente);
+                    encerrarSilenciosamente(cliente);
                 }
-            } catch (IOException exception) {
-                if (!closed) {
-                    System.err.println("Falha ao aceitar conexão: " + exception.getMessage());
+            } catch (IOException excecao) {
+                if (!encerrado) {
+                    System.err.println("Falha ao aceitar conexão: " + excecao.getMessage());
                     encerrarAposFalhaDeAceitacao();
                 }
                 return;
@@ -97,42 +97,42 @@ public final class ServidorCotacoes implements AutoCloseable {
     }
 
     /** Processa exatamente uma linha e encerra a conexão, inclusive em caso de erro. */
-    private void processarCliente(Socket client) {
-        try (client) {
-            client.setSoTimeout(CLIENT_TIMEOUT_MILLIS);
-            String request;
+    private void processarCliente(Socket cliente) {
+        try (cliente) {
+            cliente.setSoTimeout(TEMPO_LIMITE_CLIENTE_MILISSEGUNDOS);
+            String requisicao;
             try {
-                request = ProtocoloCotacoes.lerLinha(client.getInputStream());
-            } catch (IOException exception) {
-                gravarResposta(client, ProtocoloCotacoes.INVALID_REQUEST);
+                requisicao = ProtocoloCotacoes.lerLinha(cliente.getInputStream());
+            } catch (IOException excecao) {
+                gravarResposta(cliente, ProtocoloCotacoes.INVALID_REQUEST);
                 return;
             }
 
-            String response = ProtocoloCotacoes.REQUEST.equals(request)
-                    ? ProtocoloCotacoes.formatQuotes(quotes)
+            String resposta = ProtocoloCotacoes.REQUEST.equals(requisicao)
+                    ? ProtocoloCotacoes.formatQuotes(cotacoes)
                     : ProtocoloCotacoes.INVALID_REQUEST;
-            gravarResposta(client, response);
-        } catch (IOException exception) {
+            gravarResposta(cliente, resposta);
+        } catch (IOException excecao) {
             // A conexão pode ter sido encerrada pelo cliente ou pelo fechamento do servidor.
         } finally {
-            clientSockets.remove(client);
+            socketsClientes.remove(cliente);
         }
     }
 
-    private static void gravarResposta(Socket client, String response) throws IOException {
-        BufferedOutputStream output = new BufferedOutputStream(client.getOutputStream());
-        output.write((response + "\n").getBytes(StandardCharsets.US_ASCII));
+    private static void gravarResposta(Socket cliente, String resposta) throws IOException {
+        BufferedOutputStream output = new BufferedOutputStream(cliente.getOutputStream());
+        output.write((resposta + "\n").getBytes(StandardCharsets.US_ASCII));
         output.flush();
     }
 
     /** Encerra os recursos quando o socket de escuta falha fora de um fechamento normal. */
     private void encerrarAposFalhaDeAceitacao() {
-        closed = true;
-        encerrarSilenciosamente(serverSocket);
-        for (Socket client : clientSockets) {
-            encerrarSilenciosamente(client);
+        encerrado = true;
+        encerrarSilenciosamente(socketServidor);
+        for (Socket cliente : socketsClientes) {
+            encerrarSilenciosamente(cliente);
         }
-        workers.shutdownNow();
+        trabalhadores.shutdownNow();
     }
 
     private static void encerrarSilenciosamente(Socket socket) {
@@ -168,45 +168,45 @@ public final class ServidorCotacoes implements AutoCloseable {
     @Override
     public void close() throws IOException {
         synchronized (this) {
-            if (closed) {
+            if (encerrado) {
                 return;
             }
-            closed = true;
+            encerrado = true;
         }
 
-        IOException failure = null;
+        IOException falha = null;
         try {
-            serverSocket.close();
-        } catch (IOException exception) {
-            failure = exception;
+            socketServidor.close();
+        } catch (IOException excecao) {
+            falha = excecao;
         }
-        for (Socket client : clientSockets) {
-            encerrarSilenciosamente(client);
+        for (Socket cliente : socketsClientes) {
+            encerrarSilenciosamente(cliente);
         }
-        workers.shutdownNow();
+        trabalhadores.shutdownNow();
 
-        Thread acceptor = acceptThread;
+        Thread acceptor = threadAceitacao;
         if (acceptor != null && acceptor != Thread.currentThread()) {
             try {
-                acceptor.join(CLIENT_TIMEOUT_MILLIS);
-            } catch (InterruptedException exception) {
+                acceptor.join(TEMPO_LIMITE_CLIENTE_MILISSEGUNDOS);
+            } catch (InterruptedException excecao) {
                 Thread.currentThread().interrupt();
-                failure = acrescentarFalha(failure,
-                        new IOException("Interrompido ao encerrar o servidor.", exception));
+                falha = acrescentarFalha(falha,
+                        new IOException("Interrompido ao encerrar o servidor.", excecao));
             }
         }
         try {
-            if (!workers.awaitTermination(CLIENT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
-                failure = acrescentarFalha(failure,
+            if (!trabalhadores.awaitTermination(TEMPO_LIMITE_CLIENTE_MILISSEGUNDOS, TimeUnit.MILLISECONDS)) {
+                falha = acrescentarFalha(falha,
                         new IOException("O pool de clientes não encerrou dentro do prazo."));
             }
-        } catch (InterruptedException exception) {
+        } catch (InterruptedException excecao) {
             Thread.currentThread().interrupt();
-            failure = acrescentarFalha(failure,
-                    new IOException("Interrompido ao encerrar as threads do servidor.", exception));
+            falha = acrescentarFalha(falha,
+                    new IOException("Interrompido ao encerrar as threads do servidor.", excecao));
         }
-        if (failure != null) {
-            throw failure;
+        if (falha != null) {
+            throw falha;
         }
     }
 

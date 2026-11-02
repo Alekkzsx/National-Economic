@@ -29,49 +29,49 @@ import java.util.Optional;
  */
 public class SistemaInvestimentos {
     /** Limite de clientes definido para o sistema. */
-    private static final int MAX_CLIENTS = 100;
+    private static final int LIMITE_CLIENTES = 100;
 
     /** Clientes indexados pelo CPF normalizado, preservando a ordem de cadastro. */
-    private final Map<String, ContaCliente> clients = new LinkedHashMap<>();
+    private final Map<String, ContaCliente> clientes = new LinkedHashMap<>();
     /** Operações indexadas pelo identificador único da aplicação. */
-    private final Map<String, List<OperacaoFinanceira>> statements = new LinkedHashMap<>();
+    private final Map<String, List<OperacaoFinanceira>> extratos = new LinkedHashMap<>();
 
     /** Cadastra um cliente validando CPF, duplicidade e limite do sistema. */
-    public synchronized void cadastrarCliente(DadosPessoais personalData, int agencyNumber, long accountNumber) {
-        Objects.requireNonNull(personalData, "Dados pessoais obrigatórios.");
-        String cpf = cpfCanonico(personalData.getCpf());
-        if (clients.containsKey(cpf)) throw new IllegalArgumentException("CPF já cadastrado.");
-        if (clients.size() >= MAX_CLIENTS) throw new IllegalStateException("Limite de 100 clientes atingido.");
-        clients.put(cpf, new ContaCliente(personalData, agencyNumber, accountNumber));
+    public synchronized void cadastrarCliente(DadosPessoais dadosPessoais, int numeroAgencia, long numeroConta) {
+        Objects.requireNonNull(dadosPessoais, "Dados pessoais obrigatórios.");
+        String cpf = cpfCanonico(dadosPessoais.getCpf());
+        if (clientes.containsKey(cpf)) throw new IllegalArgumentException("CPF já cadastrado.");
+        if (clientes.size() >= LIMITE_CLIENTES) throw new IllegalStateException("Limite de 100 clientes atingido.");
+        clientes.put(cpf, new ContaCliente(dadosPessoais, numeroAgencia, numeroConta));
     }
 
     /** Associa uma aplicação a um cliente e cria seu extrato vazio. */
-    public synchronized void cadastrarAplicacao(String cpf, AplicacaoFinanceira investment) {
-        Objects.requireNonNull(investment, "Investimento obrigatório.");
-        ContaCliente client = exigirCliente(cpf);
-        if (buscarAplicacaoPorNumero(investment.getNumero()).isPresent()) {
+    public synchronized void cadastrarAplicacao(String cpf, AplicacaoFinanceira aplicacao) {
+        Objects.requireNonNull(aplicacao, "Investimento obrigatório.");
+        ContaCliente cliente = exigirCliente(cpf);
+        if (buscarAplicacaoPorNumero(aplicacao.getNumero()).isPresent()) {
             throw new IllegalArgumentException("Número de investimento já cadastrado no sistema.");
         }
-        client.adicionarAplicacao(investment);
-        statements.put(investment.getNumero(), new ArrayList<>());
+        cliente.adicionarAplicacao(aplicacao);
+        extratos.put(aplicacao.getNumero(), new ArrayList<>());
     }
 
     /** Valida e aplica uma operação à aplicação, registrando-a no extrato. */
-    public synchronized void registrarOperacao(String cpf, String investmentNumber, OperacaoFinanceira operation) {
-        Objects.requireNonNull(operation, "Operação obrigatória.");
-        AplicacaoFinanceira investment = exigirCliente(cpf).exigirAplicacao(investmentNumber);
-        investment.aplicar(operation);
-        statements.computeIfAbsent(investmentNumber, ignored -> new ArrayList<>()).add(operation);
+    public synchronized void registrarOperacao(String cpf, String numeroAplicacao, OperacaoFinanceira operacao) {
+        Objects.requireNonNull(operacao, "Operação obrigatória.");
+        AplicacaoFinanceira aplicacao = exigirCliente(cpf).exigirAplicacao(numeroAplicacao);
+        aplicacao.aplicar(operacao);
+        extratos.computeIfAbsent(numeroAplicacao, ignorado -> new ArrayList<>()).add(operacao);
     }
 
     /** Procura um cliente pelo CPF e retorna vazio se não existir. */
     public synchronized Optional<ContaCliente> buscarCliente(String cpf) {
-        return Optional.ofNullable(clients.get(cpfCanonico(cpf)));
+        return Optional.ofNullable(clientes.get(cpfCanonico(cpf)));
     }
 
     /** Retorna uma cópia não modificável da lista de clientes. */
     public synchronized List<ContaCliente> listarClientes() {
-        return List.copyOf(clients.values());
+        return List.copyOf(clientes.values());
     }
 
     /** Retorna as aplicações do cliente; CPF inválido ou inexistente gera erro. */
@@ -83,21 +83,21 @@ public class SistemaInvestimentos {
      * Retorna o extrato inclusivo entre as duas datas, em ordem cronológica.
      * O período deve ser válido e a aplicação deve pertencer ao cliente.
      */
-    public synchronized List<OperacaoFinanceira> obterExtrato(String cpf, String investmentNumber,
-                                                                 LocalDate start, LocalDate end) {
-        Objects.requireNonNull(start, "Data inicial obrigatória.");
-        Objects.requireNonNull(end, "Data final obrigatória.");
-        if (end.isBefore(start)) throw new IllegalArgumentException("O fim do período antecede o início.");
-        AplicacaoFinanceira investment = exigirCliente(cpf).exigirAplicacao(investmentNumber);
-        return statements.getOrDefault(investment.getNumero(), List.of()).stream()
-                .filter(op -> !op.data().isBefore(start) && !op.data().isAfter(end))
+    public synchronized List<OperacaoFinanceira> obterExtrato(String cpf, String numeroAplicacao,
+                                                                 LocalDate dataInicio, LocalDate dataFim) {
+        Objects.requireNonNull(dataInicio, "Data inicial obrigatória.");
+        Objects.requireNonNull(dataFim, "Data final obrigatória.");
+        if (dataFim.isBefore(dataInicio)) throw new IllegalArgumentException("O fim do período antecede o início.");
+        AplicacaoFinanceira aplicacao = exigirCliente(cpf).exigirAplicacao(numeroAplicacao);
+        return extratos.getOrDefault(aplicacao.getNumero(), List.of()).stream()
+                .filter(op -> !op.data().isBefore(dataInicio) && !op.data().isAfter(dataFim))
                 .sorted(Comparator.comparing(OperacaoFinanceira::data))
                 .toList();
     }
 
     /** Retorna o saldo líquido de uma aplicação específica. */
-    public synchronized BigDecimal getSaldo(String cpf, String investmentNumber) {
-        return exigirCliente(cpf).exigirAplicacao(investmentNumber).getSaldoLiquido();
+    public synchronized BigDecimal getSaldo(String cpf, String numeroAplicacao) {
+        return exigirCliente(cpf).exigirAplicacao(numeroAplicacao).getSaldoLiquido();
     }
 
     /** Soma os saldos líquidos das aplicações pertencentes ao cliente. */
@@ -108,7 +108,7 @@ public class SistemaInvestimentos {
 
     /** Soma os saldos líquidos de todas as aplicações cadastradas. */
     public synchronized BigDecimal getSaldoSistema() {
-        return clients.values().stream().flatMap(client -> client.listarAplicacoes().stream())
+        return clientes.values().stream().flatMap(cliente -> cliente.listarAplicacoes().stream())
                 .map(AplicacaoFinanceira::getSaldoLiquido).reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
@@ -116,18 +116,18 @@ public class SistemaInvestimentos {
      * Atualiza todas as aplicações em uma data útil. Fins de semana são
      * ignorados, conforme a regra da atividade.
      */
-    public synchronized void atualizarTodos(LocalDate date) {
-        Objects.requireNonNull(date, "Data obrigatória.");
-        if (date.getDayOfWeek().getValue() >= 6) return;
-        for (ContaCliente client : clients.values()) {
-            for (AplicacaoFinanceira investment : client.listarAplicacoes()) investment.atualizar(date);
+    public synchronized void atualizarTodos(LocalDate data) {
+        Objects.requireNonNull(data, "Data obrigatória.");
+        if (data.getDayOfWeek().getValue() >= 6) return;
+        for (ContaCliente cliente : clientes.values()) {
+            for (AplicacaoFinanceira aplicacao : cliente.listarAplicacoes()) aplicacao.atualizar(data);
         }
     }
 
     /** Delega a gravação do estado completo ao componente de persistência TSV. */
-    public synchronized void salvar(Path path) throws IOException {
-        Objects.requireNonNull(path, "Caminho obrigatório.");
-        ArmazenadorInvestimentos.salvar(path, clients.values(), statements);
+    public synchronized void salvar(Path caminho) throws IOException {
+        Objects.requireNonNull(caminho, "Caminho obrigatório.");
+        ArmazenadorInvestimentos.salvar(caminho, clientes.values(), extratos);
     }
 
     /**
@@ -136,43 +136,43 @@ public class SistemaInvestimentos {
      * @throws IOException se o arquivo não existir, estiver inconsistente ou
      *                     usar uma versão desconhecida
      */
-    public static SistemaInvestimentos carregar(Path path) throws IOException {
-        Objects.requireNonNull(path, "Caminho obrigatório.");
-        return ArmazenadorInvestimentos.carregar(path);
+    public static SistemaInvestimentos carregar(Path caminho) throws IOException {
+        Objects.requireNonNull(caminho, "Caminho obrigatório.");
+        return ArmazenadorInvestimentos.carregar(caminho);
     }
 
     /** Anexa operação já persistida sem reaplicar seus efeitos ao saldo restaurado. */
-    synchronized void appendRestoredOperation(
+    synchronized void anexarOperacaoRestaurada(
             String cpf,
-            String investmentNumber,
-            OperacaoFinanceira operation
+            String numeroAplicacao,
+            OperacaoFinanceira operacao
     ) {
-        ContaCliente client = exigirCliente(cpf);
-        AplicacaoFinanceira investment = client.exigirAplicacao(investmentNumber);
-        List<OperacaoFinanceira> operations = statements.get(investment.getNumero());
-        if (operations == null) {
+        ContaCliente cliente = exigirCliente(cpf);
+        AplicacaoFinanceira aplicacao = cliente.exigirAplicacao(numeroAplicacao);
+        List<OperacaoFinanceira> operacoes = extratos.get(aplicacao.getNumero());
+        if (operacoes == null) {
             throw new IllegalArgumentException("Extrato da aplicação não foi inicializado.");
         }
-        if (operation.data().isBefore(investment.getDataAplicacao())) {
+        if (operacao.data().isBefore(aplicacao.getDataAplicacao())) {
             throw new IllegalArgumentException("Operação anterior à aplicação.");
         }
-        if (operations.size() >= 100) {
+        if (operacoes.size() >= 100) {
             throw new IllegalArgumentException("Mais de 100 operações persistidas.");
         }
-        operations.add(operation);
+        operacoes.add(operacao);
     }
 
     /** Normaliza o CPF e exige que o cliente esteja cadastrado. */
     private synchronized ContaCliente exigirCliente(String cpf) {
-        ContaCliente client = clients.get(cpfCanonico(cpf));
-        if (client == null) throw new IllegalArgumentException("Cliente não encontrado.");
-        return client;
+        ContaCliente cliente = clientes.get(cpfCanonico(cpf));
+        if (cliente == null) throw new IllegalArgumentException("Cliente não encontrado.");
+        return cliente;
     }
 
     /** Busca um número de aplicação globalmente para impedir duplicidades. */
-    private Optional<AplicacaoFinanceira> buscarAplicacaoPorNumero(String number) {
-        return clients.values().stream().flatMap(c -> c.listarAplicacoes().stream())
-                .filter(i -> i.getNumero().equals(number)).findFirst();
+    private Optional<AplicacaoFinanceira> buscarAplicacaoPorNumero(String numero) {
+        return clientes.values().stream().flatMap(c -> c.listarAplicacoes().stream())
+                .filter(i -> i.getNumero().equals(numero)).findFirst();
     }
 
     /** Remove pontuação do CPF para usar uma chave estável nos mapas internos. */

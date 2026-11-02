@@ -17,13 +17,13 @@ public final class TesteEntradaTerminal {
         ByteArrayOutputStream capturedOutput = new ByteArrayOutputStream();
         try {
             System.setOut(new PrintStream(capturedOutput, true, StandardCharsets.UTF_8));
-            EntradaTerminal input = new EntradaTerminal(new Scanner(" \nNome\n1250,50\nsim\na cada 30 dias\n"));
+            EntradaTerminal entrada = new EntradaTerminal(new Scanner(" \nNome\n1250,50\nsim\na cada 30 dias\n"));
 
-            assert input.lerObrigatorio("Nome: ").equals("Nome");
-            assert input.lerValorPositivo("Valor: ").compareTo(new BigDecimal("1250.50")) == 0;
-            assert input.lerSimNao("Continuar? ");
-            PeriodicidadeRendimento period = input.lerOpcaoEnum("Rendimento", PeriodicidadeRendimento.values(),
-                    choice -> choice == PeriodicidadeRendimento.MONTHLY_30_DAYS ? "a cada 30 dias" : choice.nome());
+            assert entrada.lerObrigatorio("Nome: ").equals("Nome");
+            assert entrada.lerValorPositivo("Valor: ").compareTo(new BigDecimal("1250.50")) == 0;
+            assert entrada.lerSimNao("Continuar? ");
+            PeriodicidadeRendimento period = entrada.lerOpcaoEnum("Rendimento", PeriodicidadeRendimento.values(),
+                    opcao -> opcao == PeriodicidadeRendimento.MONTHLY_30_DAYS ? "a cada 30 dias" : opcao.name());
             assert period == PeriodicidadeRendimento.MONTHLY_30_DAYS;
 
             String cpf = "123.456.789-09";

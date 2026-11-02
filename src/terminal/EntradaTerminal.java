@@ -10,39 +10,39 @@ import java.util.function.Function;
 
 /** Reúne leituras e validações de entrada usadas pelo terminal. */
 public final class EntradaTerminal {
-    private final Scanner scanner;
+    private final Scanner leitor;
 
-    public EntradaTerminal(Scanner scanner) {
-        this.scanner = scanner;
+    public EntradaTerminal(Scanner leitor) {
+        this.leitor = leitor;
     }
 
     /** Lê um campo sem exigir que tenha conteúdo. */
-    public String lerLinha(String prompt) {
-        System.out.print(prompt);
-        if (!scanner.hasNextLine()) {
+    public String lerLinha(String mensagem) {
+        System.out.print(mensagem);
+        if (!leitor.hasNextLine()) {
             throw new EndOfInputException();
         }
-        return scanner.nextLine();
+        return leitor.nextLine();
     }
 
     /** Repete a leitura até receber um valor não vazio. */
-    public String lerObrigatorio(String prompt) {
+    public String lerObrigatorio(String mensagem) {
         while (true) {
-            String value = lerLinha(prompt).trim();
-            if (!value.isEmpty()) {
-                return value;
+            String valor = lerLinha(mensagem).trim();
+            if (!valor.isEmpty()) {
+                return valor;
             }
             System.out.println("O campo é obrigatório.");
         }
     }
 
     /** Lê um inteiro dentro dos limites indicados. */
-    public int lerInteiro(String prompt, int min, int max) {
+    public int lerInteiro(String mensagem, int min, int max) {
         while (true) {
             try {
-                int value = Integer.parseInt(lerLinha(prompt).trim());
-                if (value >= min && value <= max) {
-                    return value;
+                int valor = Integer.parseInt(lerLinha(mensagem).trim());
+                if (valor >= min && valor <= max) {
+                    return valor;
                 }
             } catch (NumberFormatException ignored) {
                 // Formato inválido; a mensagem comum informa o intervalo esperado.
@@ -52,12 +52,12 @@ public final class EntradaTerminal {
     }
 
     /** Lê um inteiro longo dentro dos limites indicados. */
-    public long lerInteiroLongo(String prompt, long min, long max) {
+    public long lerInteiroLongo(String mensagem, long min, long max) {
         while (true) {
             try {
-                long value = Long.parseLong(lerLinha(prompt).trim());
-                if (value >= min && value <= max) {
-                    return value;
+                long valor = Long.parseLong(lerLinha(mensagem).trim());
+                if (valor >= min && valor <= max) {
+                    return valor;
                 }
             } catch (NumberFormatException ignored) {
                 // Formato inválido; a mensagem comum informa o intervalo esperado.
@@ -67,11 +67,11 @@ public final class EntradaTerminal {
     }
 
     /** Lê um valor monetário positivo. */
-    public BigDecimal lerValorPositivo(String prompt) {
+    public BigDecimal lerValorPositivo(String mensagem) {
         while (true) {
-            BigDecimal value = lerDecimal(prompt);
-            if (value.signum() > 0) {
-                return value;
+            BigDecimal valor = lerDecimal(mensagem);
+            if (valor.signum() > 0) {
+                return valor;
             }
             System.out.println("O valor deve ser maior que zero.");
         }
@@ -80,20 +80,20 @@ public final class EntradaTerminal {
     /** Lê uma taxa mensal entre zero e um, inclusive. */
     public BigDecimal lerTaxaMensal() {
         while (true) {
-            BigDecimal value = lerDecimal("Taxa mensal entre 0 e 1 (ex.: 0,05 para 5%): ");
-            if (value.signum() >= 0 && value.compareTo(BigDecimal.ONE) <= 0) {
-                return value;
+            BigDecimal valor = lerDecimal("Taxa mensal entre 0 e 1 (ex.: 0,05 para 5%): ");
+            if (valor.signum() >= 0 && valor.compareTo(BigDecimal.ONE) <= 0) {
+                return valor;
             }
             System.out.println("A taxa mensal deve estar entre 0 e 1.");
         }
     }
 
     /** Aceita ponto ou vírgula como separador decimal. */
-    private BigDecimal lerDecimal(String prompt) {
+    private BigDecimal lerDecimal(String mensagem) {
         while (true) {
-            String value = lerLinha(prompt).trim().replace(',', '.');
+            String valor = lerLinha(mensagem).trim().replace(',', '.');
             try {
-                return new BigDecimal(value);
+                return new BigDecimal(valor);
             } catch (NumberFormatException ignored) {
                 System.out.println("Valor inválido. Informe um número decimal, por exemplo 1250,50.");
             }
@@ -101,10 +101,10 @@ public final class EntradaTerminal {
     }
 
     /** Lê uma data no formato ISO (AAAA-MM-DD). */
-    public LocalDate lerData(String prompt) {
+    public LocalDate lerData(String mensagem) {
         while (true) {
             try {
-                return LocalDate.parse(lerLinha(prompt).trim());
+                return LocalDate.parse(lerLinha(mensagem).trim());
             } catch (DateTimeParseException ignored) {
                 System.out.println("Data inválida. Use o formato AAAA-MM-DD.");
             }
@@ -112,13 +112,13 @@ public final class EntradaTerminal {
     }
 
     /** Interpreta respostas afirmativas e negativas em português. */
-    public boolean lerSimNao(String prompt) {
+    public boolean lerSimNao(String mensagem) {
         while (true) {
-            String answer = lerLinha(prompt).trim().toLowerCase();
-            if (answer.equals("s") || answer.equals("sim")) {
+            String resposta = lerLinha(mensagem).trim().toLowerCase();
+            if (resposta.equals("s") || resposta.equals("sim")) {
                 return true;
             }
-            if (answer.equals("n") || answer.equals("não") || answer.equals("nao")) {
+            if (resposta.equals("n") || resposta.equals("não") || resposta.equals("nao")) {
                 return false;
             }
             System.out.println("Responda s ou n.");
@@ -126,32 +126,32 @@ public final class EntradaTerminal {
     }
 
     /** Lê um caminho local digitado pelo usuário. */
-    public Path lerCaminho(String prompt) {
-        return Path.of(lerObrigatorio(prompt));
+    public Path lerCaminho(String mensagem) {
+        return Path.of(lerObrigatorio(mensagem));
     }
 
     /** Lê uma opção por número, nome do enum ou descrição localizada. */
-    public <E extends Enum<E>> E lerOpcaoEnum(String field, E[] choices, Function<E, String> label) {
-        System.out.println(field + " — escolha pelo número ou nome:");
-        for (int index = 0; index < choices.length; index++) {
-            E choice = choices[index];
-            System.out.printf("  %d. %s (%s)%n", index + 1, choice.nome(), label.apply(choice));
+    public <E extends Enum<E>> E lerOpcaoEnum(String campo, E[] opcoes, Function<E, String> rotulo) {
+        System.out.println(campo + " — escolha pelo número ou nome:");
+        for (int indice = 0; indice < opcoes.length; indice++) {
+            E opcao = opcoes[indice];
+            System.out.printf("  %d. %s (%s)%n", indice + 1, opcao.name(), rotulo.apply(opcao));
         }
         while (true) {
-            String answer = lerObrigatorio(field + ": ").trim();
+            String resposta = lerObrigatorio(campo + ": ").trim();
             try {
-                int index = Integer.parseInt(answer);
-                if (index >= 1 && index <= choices.length) {
-                    return choices[index - 1];
+                int indice = Integer.parseInt(resposta);
+                if (indice >= 1 && indice <= opcoes.length) {
+                    return opcoes[indice - 1];
                 }
             } catch (NumberFormatException ignored) {
                 // Também são aceitos os nomes e rótulos exibidos acima.
             }
-            String normalized = normalizarOpcao(answer);
-            for (E choice : choices) {
-                if (normalizarOpcao(choice.nome()).equals(normalized)
-                        || normalizarOpcao(label.apply(choice)).equals(normalized)) {
-                    return choice;
+            String normalizado = normalizarOpcao(resposta);
+            for (E opcao : opcoes) {
+                if (normalizarOpcao(opcao.name()).equals(normalizado)
+                        || normalizarOpcao(rotulo.apply(opcao)).equals(normalizado)) {
+                    return opcao;
                 }
             }
             System.out.println("Escolha inválida. Informe um dos números ou nomes exibidos.");
@@ -159,8 +159,8 @@ public final class EntradaTerminal {
     }
 
     /** Normaliza acentos e pontuação para comparar opções digitadas. */
-    private static String normalizarOpcao(String value) {
-        return Normalizer.normalize(value, Normalizer.Form.NFD)
+    private static String normalizarOpcao(String valor) {
+        return Normalizer.normalize(valor, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .replaceAll("[^A-Za-z0-9]+", "_")
                 .replaceAll("^_+|_+$", "")

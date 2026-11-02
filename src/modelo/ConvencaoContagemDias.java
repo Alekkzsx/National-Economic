@@ -12,11 +12,11 @@ public enum ConvencaoContagemDias {
     /** Dias corridos reais sobre ano financeiro de 360 dias. */
     ACTUAL_360(360);
 
-    private final int daysPerYear;
+    private final int diasPorAno;
 
     /** Associa a convenção à sua base anual de cálculo. */
-    ConvencaoContagemDias(int daysPerYear) { this.daysPerYear = daysPerYear; }
+    ConvencaoContagemDias(int diasPorAno) { this.diasPorAno = diasPorAno; }
 
     /** Retorna a base anual empregada no cálculo da taxa diária. */
-    public int diasPorAno() { return daysPerYear; }
+    public int diasPorAno() { return diasPorAno; }
 }
