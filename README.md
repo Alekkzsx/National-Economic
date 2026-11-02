@@ -27,9 +27,12 @@ javac -encoding UTF-8 -d compilado $(find src -name '*.java')
 java -cp compilado Principal
 ```
 
-O sistema carrega os dados de `data/sgi.db`, quando o arquivo existe, e salva
-as alterações ao sair. O arquivo de dados é texto UTF-8; não o edite enquanto
-o programa estiver em execução.
+O sistema principal usa a classe acadêmica `servico.SGI`, carrega os dados de
+`data/sgi.db` quando o arquivo existe e salva as alterações ao sair. Arquivos
+criados pela versão anterior do terminal são migrados automaticamente para o
+formato TSV do SGI; antes da conversão, uma cópia byte a byte é preservada como
+`data/sgi.db.antes-da-migracao.bak`. O arquivo de dados é texto UTF-8; não o
+edite enquanto o programa estiver em execução.
 
 ## Servidor de cotações
 
@@ -49,10 +52,11 @@ fictícios. O cliente envia `GET_QUOTES` e recebe uma resposta em uma linha com
 `SELICRA`, `CDIR`, `USD` e `EUR`.
 
 O menu permite cadastrar, consultar, alterar e excluir clientes, aplicações e
-operações. A exclusão de clientes e aplicações remove também os dados e
-lançamentos vinculados; a exclusão de uma operação reverte seu efeito no saldo.
-O item “Listar clientes e aplicações” exibe a carteira completa em uma única
-consulta.
+operações através da classe `servico.SGI`. A exclusão de clientes e aplicações
+remove também os dados e lançamentos vinculados. Operações só podem ser
+alteradas ou excluídas antes da apuração de rendimentos, quando o histórico
+financeiro ainda pode ser reconstruído sem perder cálculos anteriores. O item
+“Listar clientes e aplicações” exibe a carteira completa em uma única consulta.
 
 No cadastro de uma aplicação, escolha os termos padrão ou configure
 periodicidade de rendimento, vencimento, permanência mínima, frequência de
@@ -76,9 +80,9 @@ Os testes autônomos não precisam de JUnit nem de outras bibliotecas externas.
 src/
 ├── Principal.java                 # Entrada e menu do sistema
 ├── terminal/                      # Leitura e formatação do terminal
-├── modelo/                        # Modelo usado pela aplicação de terminal
+├── modelo/                        # Modelo legado usado na migração de dados
 ├── mercado/                       # Protocolo TCP, cliente e servidor de cotações
-├── servicos/                      # Serviços e persistência da aplicação de terminal
+├── servicos/                      # Migração do formato legado para o SGI
 ├── dominio/                       # Modelo acadêmico em português
 └── servico/                       # Serviços acadêmicos e persistência
 
@@ -89,11 +93,11 @@ test/
 └── integracao/                     # Testes de integração da aplicação de terminal
 ```
 
-As pastas `dominio`/`servico` e `modelo`/`servicos` mantêm APIs distintas,
-exercitadas por conjuntos de testes próprios. Por isso, elas não são duplicatas
-descartáveis. Os nomes de pacotes e classes da aplicação de terminal estão em
-português; nomes de protocolos, formatos persistidos e tipos da biblioteca Java
-permanecem inalterados para preservar compatibilidade.
+O terminal usa diretamente as classes acadêmicas em `dominio`/`servico`. A
+implementação anterior em `modelo`/`servicos` permanece apenas para ler e
+migrar arquivos existentes e para cobrir a compatibilidade do formato legado.
+Nomes de protocolos, formatos persistidos e tipos da biblioteca Java permanecem
+inalterados quando necessários para preservar compatibilidade.
 
 Valores monetários e taxas são representados com `BigDecimal`. Datas usam
 `java.time`. O sistema limita atualizações financeiras a dias úteis e permite

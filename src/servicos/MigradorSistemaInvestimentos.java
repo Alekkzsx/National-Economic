@@ -6,6 +6,9 @@ import dominio.DiaSemana;
 import dominio.MultiplasOperacoesFinanceiras;
 import servico.SGI;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 
 /**
@@ -17,6 +20,34 @@ import java.util.Objects;
  */
 public final class MigradorSistemaInvestimentos {
     private MigradorSistemaInvestimentos() {
+    }
+
+    /**
+     * Carrega um arquivo SGI ou migra automaticamente um arquivo do serviço anterior.
+     *
+     * <p>Antes de substituir o formato antigo, preserva uma cópia byte a byte
+     * com o sufixo {@code .antes-da-migracao.bak}.</p>
+     *
+     * @param caminho arquivo a carregar
+     * @return sistema carregado ou migrado
+     * @throws IOException se nenhum formato suportado puder ser carregado
+     */
+    public static SGI carregarComMigracao(java.nio.file.Path caminho) throws IOException {
+        Objects.requireNonNull(caminho, "Caminho do arquivo é obrigatório.");
+        try {
+            return SGI.arquivoLerDados(caminho);
+        } catch (IOException | RuntimeException falhaLeituraSgi) {
+            SistemaInvestimentos legado = SistemaInvestimentos.carregar(caminho);
+            SGI migrado = converter(legado);
+            java.nio.file.Path backup = caminho.resolveSibling(
+                    caminho.getFileName() + ".antes-da-migracao.bak"
+            );
+            if (!Files.exists(backup)) {
+                Files.copy(caminho, backup, StandardCopyOption.COPY_ATTRIBUTES);
+            }
+            migrado.arquivoSalvarDados(caminho);
+            return migrado;
+        }
     }
 
     /**
@@ -78,16 +109,18 @@ public final class MigradorSistemaInvestimentos {
                 origem.getOpcaoIR().ordinal(),
                 origem.getDataAplicacao()
         );
-        destino.setConvencaoContagemDias(
-                origem.getConvencaoContagemDias() == modelo.ConvencaoContagemDias.THIRTY_360
-                        ? dominio.ConvencaoContagemDias.COMERCIAL_30_360
-                        : dominio.ConvencaoContagemDias.CORRIDOS
-        );
+        destino.setConvencaoContagemDias(switch (origem.getConvencaoContagemDias()) {
+            case THIRTY_360 -> dominio.ConvencaoContagemDias.COMERCIAL_30_360;
+            case ACTUAL_365 -> dominio.ConvencaoContagemDias.CIVIL_365;
+            case ACTUAL_360 -> dominio.ConvencaoContagemDias.EFETIVO_360;
+        });
         destino.setRegimeTributario(
                 origem.getRegimeTributario() == modelo.RegimeTributario.TAX_FREE
                         ? dominio.RegimeTributario.ISENTO
                         : dominio.RegimeTributario.PADRAO
         );
+        destino.setIof(origem.getOpcaoIOF().ordinal());
+        destino.setTipoImpostoRenda(origem.getOpcaoIR().ordinal());
         destino.restaurarAcumuladores(
                 origem.getSaldoCreditado(),
                 origem.getRendimentoCreditado(),

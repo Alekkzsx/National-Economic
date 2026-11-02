@@ -8,6 +8,7 @@ import modelo.TipoOperacao;
 import modelo.DadosPessoais;
 import modelo.FrequenciaResgate;
 import servicos.SistemaInvestimentos;
+import servicos.MigradorSistemaInvestimentos;
 import modelo.PeriodicidadeRendimento;
 
 import java.io.IOException;
@@ -102,6 +103,8 @@ public final class TesteSistemaInvestimentos {
         check(sistema.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
                 LocalDate.of(2026, 1, 2)).size() == 1, "extrato inclusivo");
         testarOperacoesCrud();
+        testarMigracaoParaSgiAcademico();
+        testarCrudDoSgiAcademico();
 
         // Salva e restaura todos os dados, inclusive o estado do ciclo de rendimento.
         Path arquivo = Path.of(".aplicacao-sistema-self-test.tsv");
@@ -355,6 +358,121 @@ public final class TesteSistemaInvestimentos {
                 "nova aplicação não herda operações da aplicação excluída");
         sistema.excluirCliente(dados.getCpf());
         check(sistema.listarClientes().isEmpty(), "cliente e carteira removidos do SGI");
+    }
+
+    /** Confere a conversão integral do armazenamento anterior para o SGI acadêmico. */
+    private static void testarMigracaoParaSgiAcademico() throws IOException {
+        DadosPessoais dados = new DadosPessoais("Migração", "52998224725", "11987654321");
+        SistemaInvestimentos legado = new SistemaInvestimentos();
+        legado.cadastrarCliente(dados, 12, 3456);
+        AplicacaoFinanceira aplicacao = new AplicacaoFinanceira(
+                "Reserva migrada", "MIG-1", new BigDecimal("100.00"),
+                new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
+        aplicacao.setConvencaoContagemDias(modelo.ConvencaoContagemDias.ACTUAL_365);
+        aplicacao.setPeriodicidadeRendimento(PeriodicidadeRendimento.MONTHLY_30_DAYS);
+        aplicacao.setFrequenciaResgate(FrequenciaResgate.MONTHLY);
+        aplicacao.setOpcaoIOF(OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS);
+        aplicacao.setOpcaoIR(OpcaoIR.EXEMPT);
+        legado.cadastrarAplicacao(dados.getCpf(), aplicacao);
+        legado.atualizarTodos(LocalDate.of(2026, 1, 2));
+        legado.registrarOperacao(dados.getCpf(), "MIG-1", new OperacaoFinanceira(
+                LocalDate.of(2026, 1, 2), new BigDecimal("25.00"), "Aporte migrado", TipoOperacao.DEPOSIT));
+
+        Path arquivoAntigo = Files.createTempFile("sgi-legado-", ".tsv");
+        Path arquivoNovo = Files.createTempFile("sgi-migrado-", ".tsv");
+        Path backup = arquivoAntigo.resolveSibling(
+                arquivoAntigo.getFileName() + ".antes-da-migracao.bak");
+        try {
+            legado.salvar(arquivoAntigo);
+            byte[] conteudoAntigo = Files.readAllBytes(arquivoAntigo);
+            servico.SGI migrado = MigradorSistemaInvestimentos.carregarComMigracao(arquivoAntigo);
+            check(java.util.Arrays.equals(conteudoAntigo, Files.readAllBytes(backup)),
+                    "migração preserva uma cópia byte a byte do arquivo anterior");
+            check(Files.readAllLines(arquivoAntigo).getFirst().equals("NATIONAL-ECONOMIC\t3"),
+                    "arquivo principal foi convertido para o formato SGI");
+            dominio.MultiplasOperacoesFinanceiras carteira =
+                    migrado.requererCliente(dados.getCpf()).requererAplicacao("MIG-1");
+
+            check(migrado.getQuantidadeClientes() == 1, "migração preserva o cliente");
+            check(carteira.getAplicacao().getConvencaoContagemDias()
+                            == dominio.ConvencaoContagemDias.CIVIL_365,
+                    "migração converte a convenção de dias");
+            check(carteira.getAplicacao().getTipoRendimento() == 1
+                            && carteira.getAplicacao().getTipoResgate() == 1,
+                    "migração preserva periodicidades");
+            check(carteira.getAplicacao().getIof() == 2
+                            && carteira.getAplicacao().getTipoImpostoRenda() == 0,
+                    "migração preserva as políticas tributárias");
+            check(carteira.getAplicacao().getRendimentosPendentes()
+                            .compareTo(aplicacao.getRendimentosPendentes()) == 0,
+                    "migração preserva rendimentos pendentes");
+            check(carteira.getSaldo().compareTo(aplicacao.getSaldo()) == 0,
+                    "migração preserva o saldo já contabilizado");
+            check(carteira.getOperacoes().size() == 1, "migração preserva o histórico de operações");
+
+            migrado.arquivoSalvarDados(arquivoNovo);
+            servico.SGI restaurado = servico.SGI.arquivoLerDados(arquivoNovo);
+            check(restaurado.getSaldo(dados.getCpf(), "MIG-1")
+                            .compareTo(migrado.getSaldo(dados.getCpf(), "MIG-1")) == 0,
+                    "estado migrado permanece íntegro após salvar e carregar");
+        } finally {
+            Files.deleteIfExists(arquivoAntigo);
+            Files.deleteIfExists(arquivoNovo);
+            Files.deleteIfExists(backup);
+        }
+    }
+
+    /** Valida que o CRUD do terminal opera diretamente sobre a fachada acadêmica SGI. */
+    private static void testarCrudDoSgiAcademico() {
+        servico.SGI sgi = new servico.SGI();
+        dominio.Cliente cliente = new dominio.Cliente(
+                "Cliente SGI", "52998224725", "11987654321", 12, 3456);
+        sgi.cadastrarCliente(cliente);
+        dominio.AplicacaoFinanceira aplicacao = new dominio.AplicacaoFinanceira(
+                "Reserva", "SGI-CRUD", new BigDecimal("100.00"), BigDecimal.ZERO,
+                LocalDate.of(2026, 1, 1));
+        sgi.cadastrarAplicacao(cliente.getDadosPessoais().getCpf(), aplicacao);
+
+        sgi.alterarCliente(cliente.getDadosPessoais().getCpf(), "Cliente Atualizado", "11999998888");
+        sgi.alterarAplicacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD",
+                "Reserva Atualizada", new BigDecimal("0.01"));
+        check(cliente.getDadosPessoais().getNome().equals("Cliente Atualizado"),
+                "SGI atualiza os dados do cliente");
+        check(aplicacao.getNomeAplicacao().equals("Reserva Atualizada"),
+                "SGI atualiza os dados descritivos da aplicação");
+
+        sgi.cadastrarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD",
+                new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("20.00"),
+                        "Aporte", dominio.TipoOperacao.DEPOSITO));
+        sgi.cadastrarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD",
+                new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("5.00"),
+                        "Resgate", dominio.TipoOperacao.RETIRADA));
+        sgi.alterarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD", 0,
+                new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("30.00"),
+                        "Aporte corrigido", dominio.TipoOperacao.DEPOSITO));
+        check(sgi.getSaldo(cliente.getDadosPessoais().getCpf(), "SGI-CRUD")
+                        .compareTo(new BigDecimal("125.00")) == 0,
+                "SGI recalcula o saldo após edição de operação");
+
+        sgi.excluirOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD", 1);
+        check(sgi.getSaldo(cliente.getDadosPessoais().getCpf(), "SGI-CRUD")
+                        .compareTo(new BigDecimal("130.00")) == 0,
+                "SGI reverte o efeito da operação excluída");
+        sgi.atualizarAplicacoes(LocalDate.of(2026, 1, 5));
+        boolean edicaoBloqueada = false;
+        try {
+            sgi.alterarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD", 0,
+                    new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2),
+                            new BigDecimal("40.00"), "Alteração tardia", dominio.TipoOperacao.DEPOSITO));
+        } catch (IllegalStateException esperada) {
+            edicaoBloqueada = true;
+        }
+        check(edicaoBloqueada, "SGI bloqueia edição depois da apuração de rendimentos");
+        sgi.excluirAplicacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD");
+        check(sgi.getAplicacoes(cliente.getDadosPessoais().getCpf()).isEmpty(),
+                "SGI remove a aplicação da carteira");
+        sgi.excluirCliente(cliente.getDadosPessoais().getCpf());
+        check(sgi.getQuantidadeClientes() == 0, "SGI remove o cliente e seus dados vinculados");
     }
 
     /** Falha imediatamente com uma mensagem curta quando uma expectativa não se cumpre. */

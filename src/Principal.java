@@ -1,10 +1,12 @@
 import mercado.ClienteCotacoes;
-import modelo.AplicacaoFinanceira;
-import modelo.ContaCliente;
-import modelo.DadosPessoais;
-import modelo.OperacaoFinanceira;
-import modelo.TipoOperacao;
-import servicos.SistemaInvestimentos;
+import dominio.AplicacaoFinanceira;
+import dominio.Cliente;
+import dominio.DADOSPESSOAIS;
+import dominio.MultiplasOperacoesFinanceiras;
+import dominio.OperacaoFinanceira;
+import dominio.TipoOperacao;
+import servico.SGI;
+import servicos.MigradorSistemaInvestimentos;
 import terminal.EntradaTerminal;
 import terminal.FormatadorTerminal;
 import terminal.TermosInvestimento;
@@ -44,7 +46,7 @@ public final class Principal {
     private final EntradaTerminal entrada;
 
     /** Não é final porque a opção "Carregar estado" substitui a instância inteira. */
-    private SistemaInvestimentos sistema;
+    private SGI sistema;
 
     /**
      * Indica se o estado deve ser gravado em {@link #ARQUIVO_PADRAO} ao sair.
@@ -75,16 +77,17 @@ public final class Principal {
     /** Usa o arquivo padrão quando disponível e protege dados que não puderam ser lidos. */
     private static EstadoInicial carregarEstadoPadrao() {
         if (!Files.exists(ARQUIVO_PADRAO)) {
-            return new EstadoInicial(new SistemaInvestimentos(), true);
+            return new EstadoInicial(new SGI(), true);
         }
         try {
             System.out.println("Carregando estado de " + ARQUIVO_PADRAO + "...");
-            return new EstadoInicial(SistemaInvestimentos.carregar(ARQUIVO_PADRAO), true);
+            SGI carregado = MigradorSistemaInvestimentos.carregarComMigracao(ARQUIVO_PADRAO);
+            return new EstadoInicial(carregado, true);
         } catch (IOException | RuntimeException e) {
             System.out.println("Não foi possível carregar " + ARQUIVO_PADRAO + ": "
                     + FormatadorTerminal.mensagemDe(e));
             System.out.println("O sistema será iniciado vazio; o arquivo original será preservado.");
-            return new EstadoInicial(new SistemaInvestimentos(), false);
+            return new EstadoInicial(new SGI(), false);
         }
     }
 
@@ -116,8 +119,8 @@ public final class Principal {
             case "3" -> consultarCliente();
             case "4" -> cadastrarAplicacao();
             case "5" -> listarAplicacoes();
-            case "6" -> lancarOperacao(TipoOperacao.DEPOSIT);
-            case "7" -> lancarOperacao(TipoOperacao.WITHDRAWAL);
+            case "6" -> lancarOperacao(TipoOperacao.DEPOSITO);
+            case "7" -> lancarOperacao(TipoOperacao.RETIRADA);
             case "8" -> exibirExtrato();
             case "9" -> exibirSaldoCliente();
             case "10" -> exibirSaldoSistema();
@@ -187,53 +190,77 @@ public final class Principal {
     /** Cadastra os dados pessoais e bancários de um cliente. */
     private void cadastrarCliente() {
         String nome = entrada.lerObrigatorio("Nome completo: ");
-        String cpf = entrada.lerObrigatorio("CPF (será ocultado nas listagens): ");
-        String celular = entrada.lerObrigatorio("Celular (com DDD): ");
+        DADOSPESSOAIS dadosPessoais;
+        while (true) {
+            String cpf = entrada.lerObrigatorio("CPF (será ocultado nas listagens): ");
+            try {
+                dadosPessoais = new DADOSPESSOAIS(nome, cpf);
+            } catch (IllegalArgumentException excecao) {
+                System.out.println("CPF inválido. Informe um CPF válido com 11 dígitos.");
+                continue;
+            }
+            if (sistema.buscarCliente(dadosPessoais.getCpf()).isPresent()) {
+                System.out.println("Já existe um cliente cadastrado com esse CPF.");
+                continue;
+            }
+            break;
+        }
+
+        while (true) {
+            String celular = entrada.lerObrigatorio("Celular (com DDD): ");
+            try {
+                dadosPessoais.setCelular(celular);
+                break;
+            } catch (IllegalArgumentException excecao) {
+                System.out.println("Celular inválido. Informe de 10 a 13 dígitos, incluindo o DDD.");
+            }
+        }
         int agencia = entrada.lerInteiro("Número da agência: ", 1, Integer.MAX_VALUE);
         long conta = entrada.lerInteiroLongo("Número da conta: ", 1, Long.MAX_VALUE);
 
-        sistema.cadastrarCliente(new DadosPessoais(nome, cpf, celular), agencia, conta);
+        sistema.cadastrarCliente(dadosPessoais, agencia, conta);
         System.out.println("Cliente cadastrado com sucesso.");
     }
 
     /** Lista clientes sem revelar o CPF completo. */
     private void listarClientes() {
-        List<ContaCliente> clientes = sistema.listarClientes();
+        List<Cliente> clientes = sistema.getClientes();
         if (clientes.isEmpty()) {
             System.out.println("Não há clientes cadastrados.");
             return;
         }
         System.out.println("Clientes cadastrados:");
-        for (ContaCliente cliente : clientes) {
-            DadosPessoais dados = cliente.getDadosPessoais();
+        for (Cliente cliente : clientes) {
+            DADOSPESSOAIS dados = cliente.getDadosPessoais();
             System.out.printf("- %s | CPF: %s%n", dados.getNome(), FormatadorTerminal.mascararCpf(dados.getCpf()));
         }
     }
 
     /** Lista cada cliente junto das aplicações que compõem sua carteira. */
     private void listarClientesEAplicacoes() {
-        List<ContaCliente> clientes = sistema.listarClientes();
+        List<Cliente> clientes = sistema.getClientes();
         if (clientes.isEmpty()) {
             System.out.println("Não há clientes cadastrados.");
             return;
         }
-        for (ContaCliente cliente : clientes) {
-            DadosPessoais dados = cliente.getDadosPessoais();
+        for (Cliente cliente : clientes) {
+            DADOSPESSOAIS dados = cliente.getDadosPessoais();
             System.out.printf("%s | CPF: %s | Agência/conta: %d/%d%n",
                     dados.getNome(),
                     FormatadorTerminal.mascararCpf(dados.getCpf()),
                     cliente.getNumeroAgencia(),
                     cliente.getNumeroConta());
-            List<AplicacaoFinanceira> aplicacoes = cliente.listarAplicacoes();
+            List<MultiplasOperacoesFinanceiras> aplicacoes = cliente.getAplicacoes();
             if (aplicacoes.isEmpty()) {
                 System.out.println("  (sem aplicações cadastradas)");
                 continue;
             }
-            for (AplicacaoFinanceira aplicacao : aplicacoes) {
+            for (MultiplasOperacoesFinanceiras carteira : aplicacoes) {
+                AplicacaoFinanceira aplicacao = carteira.getAplicacao();
                 System.out.printf("  - %s | número: %s | saldo: %s%n",
-                        aplicacao.getNome(),
-                        aplicacao.getNumero(),
-                        FormatadorTerminal.formatarMoeda(aplicacao.getSaldoLiquido()));
+                        aplicacao.getNomeAplicacao(),
+                        aplicacao.getNumeroAplicacao(),
+                        FormatadorTerminal.formatarMoeda(carteira.getSaldoLiquido()));
             }
         }
     }
@@ -241,11 +268,11 @@ public final class Principal {
     /** Altera o nome e o celular do cliente, preservando o CPF como identificador. */
     private void alterarCliente() {
         String cpf = lerIdentificadorCliente();
-        ContaCliente cliente = sistema.buscarCliente(cpf)
+        Cliente cliente = sistema.buscarCliente(cpf)
                 .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado."));
         String nome = entrada.lerObrigatorio("Novo nome completo: ");
         String celular = entrada.lerObrigatorio("Novo celular (com DDD): ");
-        sistema.alterarDadosCliente(cpf, nome, celular);
+        sistema.alterarCliente(cpf, nome, celular);
         System.out.println("Dados do cliente " + FormatadorTerminal.mascararCpf(cliente.getDadosPessoais().getCpf())
                 + " atualizados com sucesso.");
     }
@@ -253,7 +280,7 @@ public final class Principal {
     /** Exclui o cliente e a carteira inteira após confirmação explícita. */
     private void excluirCliente() {
         String cpf = lerIdentificadorCliente();
-        ContaCliente cliente = sistema.buscarCliente(cpf)
+        Cliente cliente = sistema.buscarCliente(cpf)
                 .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado."));
         if (!entrada.lerSimNao("Excluir cliente e todas as aplicações vinculadas? (s/n): ")) {
             System.out.println("Exclusão cancelada.");
@@ -267,14 +294,14 @@ public final class Principal {
     /** Consulta os dados cadastrais e o saldo consolidado de um cliente. */
     private void consultarCliente() {
         String identificadorCliente = lerIdentificadorCliente();
-        Optional<ContaCliente> resultado = sistema.buscarCliente(identificadorCliente);
+        Optional<Cliente> resultado = sistema.buscarCliente(identificadorCliente);
         if (resultado.isEmpty()) {
             System.out.println("Cliente não encontrado.");
             return;
         }
-        ContaCliente cliente = resultado.get();
-        DadosPessoais dados = cliente.getDadosPessoais();
-        BigDecimal saldoTotal = sistema.getSaldoCliente(identificadorCliente);
+        Cliente cliente = resultado.get();
+        DADOSPESSOAIS dados = cliente.getDadosPessoais();
+        BigDecimal saldoTotal = sistema.getSaldo(identificadorCliente);
 
         System.out.println("Cliente: " + dados.getNome());
         System.out.println("CPF/identificador: " + FormatadorTerminal.mascararCpf(dados.getCpf()));
@@ -313,18 +340,19 @@ public final class Principal {
     /** Lista os dados principais das aplicações de um cliente. */
     private void listarAplicacoes() {
         String identificadorCliente = lerIdentificadorCliente();
-        List<AplicacaoFinanceira> aplicacoes = sistema.listarAplicacoes(identificadorCliente);
+        List<MultiplasOperacoesFinanceiras> aplicacoes = sistema.getAplicacoes(identificadorCliente);
         if (aplicacoes.isEmpty()) {
             System.out.println("O cliente não possui aplicações cadastradas.");
             return;
         }
         System.out.println("Aplicações de " + FormatadorTerminal.mascararCpf(identificadorCliente) + ":");
-        for (AplicacaoFinanceira aplicacao : aplicacoes) {
+        for (MultiplasOperacoesFinanceiras carteira : aplicacoes) {
+            AplicacaoFinanceira aplicacao = carteira.getAplicacao();
             System.out.printf("- %s | número: %s | saldo: %s | aporte inicial: %s | taxa mensal: %s%n",
-                    aplicacao.getNome(),
-                    aplicacao.getNumero(),
-                    FormatadorTerminal.formatarMoeda(aplicacao.getSaldo()),
-                    FormatadorTerminal.formatarMoeda(aplicacao.getValorInicial()),
+                    aplicacao.getNomeAplicacao(),
+                    aplicacao.getNumeroAplicacao(),
+                    FormatadorTerminal.formatarMoeda(carteira.getSaldo()),
+                    FormatadorTerminal.formatarMoeda(aplicacao.getValorAplicado()),
                     aplicacao.getTaxaMensal());
         }
     }
@@ -353,7 +381,8 @@ public final class Principal {
 
     /** Exibe os lançamentos disponíveis e retorna o índice escolhido pelo usuário. */
     private int selecionarOperacao(String cpf, String numeroAplicacao) {
-        List<OperacaoFinanceira> operacoes = sistema.listarOperacoes(cpf, numeroAplicacao);
+        List<OperacaoFinanceira> operacoes =
+                sistema.requererCliente(cpf).requererAplicacao(numeroAplicacao).getOperacoes();
         if (operacoes.isEmpty()) {
             System.out.println("A aplicação não possui operações cadastradas.");
             return -1;
@@ -362,10 +391,10 @@ public final class Principal {
             OperacaoFinanceira operacao = operacoes.get(indice);
             System.out.printf("%d. %s | %s | %s | %s%n",
                     indice + 1,
-                    operacao.data(),
-                    operacao.tipo(),
-                    FormatadorTerminal.formatarMoeda(operacao.valor()),
-                    operacao.descricao());
+                    operacao.getData(),
+                    operacao.getTipo().getDescricao(),
+                    FormatadorTerminal.formatarMoeda(operacao.getValor()),
+                    operacao.getDescricao());
         }
         return entrada.lerInteiro("Número da operação: ", 1, operacoes.size()) - 1;
     }
@@ -405,7 +434,7 @@ public final class Principal {
         BigDecimal valor = entrada.lerValorPositivo("Valor: ");
         String descricao = entrada.lerObrigatorio("Descrição: ");
         int opcaoTipo = entrada.lerInteiro("Tipo (1 = depósito, 2 = retirada): ", 1, 2);
-        TipoOperacao tipo = opcaoTipo == 1 ? TipoOperacao.DEPOSIT : TipoOperacao.WITHDRAWAL;
+        TipoOperacao tipo = opcaoTipo == 1 ? TipoOperacao.DEPOSITO : TipoOperacao.RETIRADA;
         return new OperacaoFinanceira(data, valor, descricao, tipo);
     }
 
@@ -418,11 +447,11 @@ public final class Principal {
         String descricao = entrada.lerObrigatorio("Descrição: ");
 
         OperacaoFinanceira operacao = new OperacaoFinanceira(data, valor, descricao, tipo);
-        sistema.registrarOperacao(identificadorCliente, identificadorAplicacao, operacao);
+        sistema.cadastrarOperacao(identificadorCliente, identificadorAplicacao, operacao);
 
         String mensagemSucesso = switch (tipo) {
-            case DEPOSIT -> "Depósito lançado com sucesso.";
-            case WITHDRAWAL -> "Retirada lançada com sucesso.";
+            case DEPOSITO -> "Depósito lançado com sucesso.";
+            case RETIRADA -> "Retirada lançada com sucesso.";
         };
         System.out.println(mensagemSucesso);
     }
@@ -448,7 +477,7 @@ public final class Principal {
         }
 
         List<OperacaoFinanceira> operacoes =
-                sistema.obterExtrato(identificadorCliente, identificadorAplicacao, dataInicial, dataFinal);
+                sistema.getExtrato(identificadorCliente, identificadorAplicacao, dataInicial, dataFinal);
         if (operacoes.isEmpty()) {
             System.out.println("Não há operações no período informado.");
             return;
@@ -457,10 +486,10 @@ public final class Principal {
                 FormatadorTerminal.mascararCpf(identificadorCliente), dataInicial, dataFinal);
         for (OperacaoFinanceira operacao : operacoes) {
             System.out.printf("- %s | %s | %s | %s%n",
-                    operacao.data(),
-                    operacao.tipo(),
-                    FormatadorTerminal.formatarMoeda(operacao.valor()),
-                    operacao.descricao());
+                    operacao.getData(),
+                    operacao.getTipo().getDescricao(),
+                    FormatadorTerminal.formatarMoeda(operacao.getValor()),
+                    operacao.getDescricao());
         }
     }
 
@@ -475,14 +504,14 @@ public final class Principal {
                 entrada.lerLinha("Código da aplicação (vazio para saldo total do cliente): ").trim();
 
         BigDecimal saldo = identificadorAplicacao.isEmpty()
-                ? sistema.getSaldoCliente(identificadorCliente)
+                ? sistema.getSaldo(identificadorCliente)
                 : sistema.getSaldo(identificadorCliente, identificadorAplicacao);
         System.out.println("Saldo: " + FormatadorTerminal.formatarMoeda(saldo));
     }
 
     /** Consulta o saldo líquido total do sistema. */
     private void exibirSaldoSistema() {
-        System.out.println("Saldo total do sistema: " + FormatadorTerminal.formatarMoeda(sistema.getSaldoSistema()));
+        System.out.println("Saldo total do sistema: " + FormatadorTerminal.formatarMoeda(sistema.getSaldo()));
     }
 
     /**
@@ -493,7 +522,7 @@ public final class Principal {
      */
     private void atualizarAplicacoes() {
         LocalDate data = entrada.lerData("Data de atualização " + FORMATO_DATA);
-        sistema.atualizarTodos(data);
+        sistema.atualizarAplicacoes(data);
         if (ehFimDeSemana(data)) {
             System.out.println("A data informada é fim de semana; o serviço não processou a atualização.");
         } else {
@@ -509,7 +538,7 @@ public final class Principal {
     private void carregarEstado() {
         Path caminho = entrada.lerCaminho("Caminho do arquivo para carregar: ");
         try {
-            sistema = SistemaInvestimentos.carregar(caminho);
+            sistema = MigradorSistemaInvestimentos.carregarComMigracao(caminho);
             System.out.println("Estado carregado com sucesso de " + caminho + ".");
         } catch (IOException | RuntimeException e) {
             System.out.println("Falha ao carregar " + caminho + ": " + FormatadorTerminal.mensagemDe(e));
@@ -533,7 +562,7 @@ public final class Principal {
             if (pastaPai != null) {
                 Files.createDirectories(pastaPai);
             }
-            sistema.salvar(caminho);
+            sistema.arquivoSalvarDados(caminho);
             if (ehArquivoPadrao(caminho)) {
                 salvarAutomaticamenteAoSair = true;
             }
@@ -594,5 +623,5 @@ public final class Principal {
      * @param sistema                     sistema carregado do disco ou recém-criado
      * @param salvarAutomaticamenteAoSair se é seguro sobrescrever o arquivo padrão ao sair
      */
-    private record EstadoInicial(SistemaInvestimentos sistema, boolean salvarAutomaticamenteAoSair) { }
+    private record EstadoInicial(SGI sistema, boolean salvarAutomaticamenteAoSair) { }
 }

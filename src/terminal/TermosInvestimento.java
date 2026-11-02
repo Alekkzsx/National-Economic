@@ -2,7 +2,6 @@ package terminal;
 
 import modelo.OpcaoIOF;
 import modelo.OpcaoIR;
-import modelo.AplicacaoFinanceira;
 import modelo.FrequenciaResgate;
 import modelo.PeriodicidadeRendimento;
 
@@ -12,29 +11,46 @@ import java.util.Arrays;
 public final class TermosInvestimento {
     private TermosInvestimento() { }
 
-    /** Solicita prazos e opções de rendimento para a aplicação. */
-    public static void configurar(AplicacaoFinanceira aplicacao, EntradaTerminal entrada) {
+    /** Configura os termos equivalentes no modelo acadêmico usado pela aplicação principal. */
+    public static void configurar(dominio.AplicacaoFinanceira aplicacao, EntradaTerminal entrada) {
         int diasVencimento = entrada.lerInteiro("Dias até o vencimento (0 = sem vencimento): ",
                 0, Integer.MAX_VALUE);
-        aplicacao.setDiasVencimento(diasVencimento);
+        aplicacao.setTempoFinalVencimento(diasVencimento);
 
-        int maximumStay = diasVencimento == 0 ? Integer.MAX_VALUE : diasVencimento;
-        int minimumStay = entrada.lerInteiro("Permanência mínima em dias: ", 0, maximumStay);
-        aplicacao.setDiasPermanenciaMinima(minimumStay);
+        int permanenciaMaxima = diasVencimento == 0 ? Integer.MAX_VALUE : diasVencimento;
+        aplicacao.setTempoMinimoPermanencia(
+                entrada.lerInteiro("Permanência mínima em dias: ", 0, permanenciaMaxima)
+        );
 
-        PeriodicidadeRendimento[] yieldOptions = diasVencimento == 0
+        PeriodicidadeRendimento[] periodicidades = diasVencimento == 0
                 ? Arrays.stream(PeriodicidadeRendimento.values())
-                        .filter(period -> period != PeriodicidadeRendimento.AT_MATURITY)
+                        .filter(periodicidade -> periodicidade != PeriodicidadeRendimento.AT_MATURITY)
                         .toArray(PeriodicidadeRendimento[]::new)
                 : PeriodicidadeRendimento.values();
-        aplicacao.setPeriodicidadeRendimento(entrada.lerOpcaoEnum("Periodicidade de rendimento", yieldOptions,
-                TermosInvestimento::rotuloPeriodicidadeRendimento));
-        aplicacao.setFrequenciaResgate(entrada.lerOpcaoEnum("Frequência de resgate",
-                FrequenciaResgate.values(), TermosInvestimento::rotuloFrequenciaResgate));
-        aplicacao.setOpcaoIOF(entrada.lerOpcaoEnum("Opção de IOF", OpcaoIOF.values(),
-                TermosInvestimento::rotuloOpcaoIOF));
-        aplicacao.setOpcaoIR(entrada.lerOpcaoEnum("Opção de IR", OpcaoIR.values(),
-                TermosInvestimento::rotuloOpcaoIR));
+        PeriodicidadeRendimento periodicidade = entrada.lerOpcaoEnum(
+                "Periodicidade de rendimento", periodicidades,
+                TermosInvestimento::rotuloPeriodicidadeRendimento
+        );
+        aplicacao.setTipoRendimento(switch (periodicidade) {
+            case DAILY -> 0;
+            case MONTHLY_30_DAYS -> 1;
+            case QUARTERLY_90_DAYS -> 2;
+            case HALF_YEARLY_180_DAYS -> 3;
+            case YEARLY_365_DAYS -> 4;
+            case AT_MATURITY -> 5;
+        });
+
+        FrequenciaResgate frequencia = entrada.lerOpcaoEnum(
+                "Frequência de resgate", FrequenciaResgate.values(),
+                TermosInvestimento::rotuloFrequenciaResgate
+        );
+        aplicacao.setTipoResgate(frequencia.ordinal());
+        aplicacao.setIof(entrada.lerOpcaoEnum(
+                "Opção de IOF", OpcaoIOF.values(), TermosInvestimento::rotuloOpcaoIOF
+        ).ordinal());
+        aplicacao.setTipoImpostoRenda(entrada.lerOpcaoEnum(
+                "Opção de IR", OpcaoIR.values(), TermosInvestimento::rotuloOpcaoIR
+        ).ordinal());
     }
 
     /** Descreve a periodicidade de rendimento para o menu. */

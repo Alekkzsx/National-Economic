@@ -206,7 +206,7 @@ public class MultiplasOperacoesFinanceiras {
         for (OperacaoFinanceira operacao : atualizadas) {
             validacao.adicionarOperacao(operacao);
         }
-        this.aplicacao = reconstruida;
+        this.aplicacao = validacao.getAplicacao();
         this.operacoes.clear();
         this.operacoes.addAll(atualizadas);
         this.calendario = validacao.getCalendario();
