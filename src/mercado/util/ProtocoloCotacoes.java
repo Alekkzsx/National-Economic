@@ -12,8 +12,13 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Utilitário reutilizável do protocolo TCP de cotações: leitura limitada em ASCII,
- * validação simétrica (servidor e cliente), formatação canônica e fechamento seguro de sockets.
+ * Utilitário reutilizável do protocolo TCP ASCII de cotações:
+ * <ul>
+ *   <li>Requisição do cliente: {@code GET_QUOTES\n} (até {@value #LIMITE_BYTES_LINHA} bytes, ASCII puro, sem {@code \r}).</li>
+ *   <li>Resposta de sucesso: {@code OK|SELICRA=...|CDIR=...|USD=...|EUR=...\n}.</li>
+ *   <li>Resposta de erro: {@code ERR|INVALID_REQUEST\n}.</li>
+ *   <li>Validação simétrica em servidor e cliente: taxas {@code >= 0}, câmbio {@code > 0}.</li>
+ * </ul>
  */
 public final class ProtocoloCotacoes {
 

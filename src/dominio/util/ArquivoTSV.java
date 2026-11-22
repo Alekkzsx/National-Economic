@@ -1,13 +1,13 @@
 package dominio.util;
 
-import dominio.AplicacaoFinanceira;
-import dominio.Cliente;
-import dominio.ConvencaoContagemDias;
-import dominio.DADOSPESSOAIS;
-import dominio.MultiplasOperacoesFinanceiras;
-import dominio.OperacaoFinanceira;
-import dominio.RegimeTributario;
-import dominio.TipoOperacao;
+import dominio.aplicacao.AplicacaoFinanceira;
+import dominio.cliente.Cliente;
+import dominio.aplicacao.ConvencaoContagemDias;
+import dominio.cliente.DADOSPESSOAIS;
+import dominio.operacao.MultiplasOperacoesFinanceiras;
+import dominio.operacao.OperacaoFinanceira;
+import dominio.tributacao.RegimeTributario;
+import dominio.operacao.TipoOperacao;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -53,7 +53,14 @@ public final class ArquivoTSV {
     // Escrita atômica e permissões seguras
     // -------------------------------------------------------------------------
 
-    /** Grava atomicamente via arquivo temporário único na mesma pasta, fsync e permissão 0600. */
+    /**
+     * Grava atomicamente via arquivo temporário na mesma pasta, {@code fsync}, troca atômica
+     * ({@code ATOMIC_MOVE}) e permissão POSIX {@code 0600} para proteger dados cadastrais (LGPD).
+     *
+     * @param caminho arquivo de destino
+     * @param escritor callback que escreve todas as linhas no {@link BufferedWriter}
+     * @throws IOException em caso de falha de escrita ou movimentação
+     */
     public static void escreverAtomico(Path caminho, EscritorConteudo escritor) throws IOException {
         Objects.requireNonNull(caminho, "Caminho do arquivo é obrigatório.");
         Objects.requireNonNull(escritor, "Escritor de conteúdo é obrigatório.");
@@ -64,6 +71,7 @@ public final class ArquivoTSV {
             Files.createDirectories(diretorioPai);
         }
 
+        // Mantém o temporário no mesmo diretório/filesystem para garantir ATOMIC_MOVE no mesmo inode
         Path pastaTmp = diretorioPai != null ? diretorioPai : Path.of(".");
         Path arquivoTmp = Files.createTempFile(pastaTmp, "." + absoluto.getFileName() + ".", ".tmp");
         try {
@@ -73,6 +81,7 @@ public final class ArquivoTSV {
                  BufferedWriter writer = new BufferedWriter(osw)) {
                 escritor.escrever(writer);
                 writer.flush();
+                // Força descarga dos buffers do sistema operacional antes da troca atômica
                 fos.getFD().sync();
             }
             aplicarPermissoes0600(arquivoTmp);
@@ -170,7 +179,14 @@ public final class ArquivoTSV {
     }
 
     // -------------------------------------------------------------------------
-    // Codecs canônicos de registros C, I (26 colunas) e O (7 colunas) — v3
+    // Codecs canônicos do formato TSV v3 (C=6 cols, I=26 cols, O=7 cols):
+    //   C: tipo \t cpf \t nome \t celular \t agencia \t conta
+    //   I: tipo \t cpf \t numero \t nome \t valorAplicado \t taxaMensal \t dataApp \t
+    //      saldo \t valorAtualBruto \t dataUltimaAtualizacao \t diasCorridos \t
+    //      diasEfetivos \t qtdOps \t convencao \t regime \t tipoRend \t vencimento \t
+    //      permanencia \t tipoResgate \t iof \t tipoIR \t valorResgate \t
+    //      valorAtualLiquido \t rendAtualBruto \t rendAtualLiquido \t impostoDevido
+    //   O: tipo \t cpf \t numeroApp \t data \t valor \t descricao \t tipoOperacao
     // -------------------------------------------------------------------------
 
     /** Serializa um registro de cliente {@code C} (6 colunas). */

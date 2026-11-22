@@ -1,15 +1,15 @@
-import dominio.AplicacaoFinanceira;
-import dominio.Cliente;
-import dominio.DADOSPESSOAIS;
-import dominio.DiaSemana;
-import dominio.MultiplasOperacoesFinanceiras;
-import dominio.OperacaoFinanceira;
-import dominio.TipoOperacao;
+import dominio.aplicacao.AplicacaoFinanceira;
+import dominio.cliente.Cliente;
+import dominio.cliente.DADOSPESSOAIS;
+import dominio.calendario.DiaSemana;
+import dominio.operacao.MultiplasOperacoesFinanceiras;
+import dominio.operacao.OperacaoFinanceira;
+import dominio.operacao.TipoOperacao;
 import legado.servicos.MigradorSistemaInvestimentos;
-import mercado.ClienteCotacoes;
-import servico.SGI;
-import terminal.EntradaTerminal;
-import terminal.TermosInvestimento;
+import mercado.provedores.ClienteCotacoes;
+import servico.sistema.SGI;
+import terminal.interacao.EntradaTerminal;
+import terminal.interacao.TermosInvestimento;
 import terminal.abstracoes.InterfaceTerminal;
 import terminal.util.AuxiliarCotacoes;
 import terminal.util.FormatadorTerminal;
@@ -26,7 +26,12 @@ import java.util.Scanner;
 
 /**
  * Itens 8 e 9 — Ponto de entrada e menu CRUD interativo do SGI no terminal,
- * integrado ao servidor de cotações (SELICRA, CDIR, USD e EUR).
+ * integrado ao servidor de cotações ({@code SELICRA}, {@code CDIR}, {@code USD} e {@code EUR}).
+ *
+ * <p>Ao iniciar, carrega automaticamente {@code data/sgi.db} (migrando formatos legados
+ * se necessário). Caso a leitura inicial falhe, inicia vazio com {@code salvarAutomaticamenteAoSair = false}
+ * para não sobrescrever o arquivo possivelmente corrompido ao sair. A carga manual (opção 20)
+ * preserva as cotações já carregadas na sessão.</p>
  */
 public final class Main extends InterfaceTerminal {
 
@@ -157,36 +162,43 @@ public final class Main extends InterfaceTerminal {
 
     private void cadastrarCliente() {
         String nome = entrada.lerObrigatorio("Nome completo: ");
-        DADOSPESSOAIS dadosPessoais;
-        while (true) {
-            String cpf = entrada.lerObrigatorio("CPF (será ocultado nas listagens): ");
-            try {
-                dadosPessoais = new DADOSPESSOAIS(nome, cpf);
-            } catch (IllegalArgumentException e) {
-                System.out.println("CPF inválido. Informe um CPF válido com 11 dígitos.");
-                continue;
-            }
-            if (sistema.buscarCliente(dadosPessoais.getCpf()).isPresent()) {
-                System.out.println("Já existe um cliente cadastrado com esse CPF.");
-                continue;
-            }
-            break;
-        }
-
-        while (true) {
-            String celular = entrada.lerObrigatorio("Celular (com DDD): ");
-            try {
-                dadosPessoais.setCelular(celular);
-                break;
-            } catch (IllegalArgumentException e) {
-                System.out.println("Celular inválido. Informe de 10 a 13 dígitos, incluindo o DDD.");
-            }
-        }
+        DADOSPESSOAIS dadosPessoais = lerDadosPessoaisValidos(nome);
+        lerCelularValido(dadosPessoais);
         int agencia = entrada.lerInteiro("Número da agência: ", 1, Integer.MAX_VALUE);
         long conta = entrada.lerInteiroLongo("Número da conta: ", 1, Long.MAX_VALUE);
 
         sistema.cadastrarCliente(dadosPessoais, agencia, conta);
         System.out.println("Cliente cadastrado com sucesso.");
+    }
+
+    private DADOSPESSOAIS lerDadosPessoaisValidos(String nome) {
+        while (true) {
+            String cpf = entrada.lerObrigatorio("CPF (será ocultado nas listagens): ");
+            DADOSPESSOAIS dados;
+            try {
+                dados = new DADOSPESSOAIS(nome, cpf);
+            } catch (IllegalArgumentException e) {
+                System.out.println("CPF inválido. Informe um CPF válido com 11 dígitos.");
+                continue;
+            }
+            if (sistema.buscarCliente(dados.getCpf()).isPresent()) {
+                System.out.println("Já existe um cliente cadastrado com esse CPF.");
+                continue;
+            }
+            return dados;
+        }
+    }
+
+    private void lerCelularValido(DADOSPESSOAIS dadosPessoais) {
+        while (true) {
+            String celular = entrada.lerObrigatorio("Celular (com DDD): ");
+            try {
+                dadosPessoais.setCelular(celular);
+                return;
+            } catch (IllegalArgumentException e) {
+                System.out.println("Celular inválido. Informe de 10 a 13 dígitos, incluindo o DDD.");
+            }
+        }
     }
 
     private void listarClientes() {
@@ -340,11 +352,9 @@ public final class Main extends InterfaceTerminal {
     private void lancarOperacao(TipoOperacao tipo) {
         String cpf = lerCpfCliente();
         String numero = lerCodigoAplicacao();
-        LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
-        BigDecimal valor = AuxiliarCotacoes.lerValorEmReal(entrada, sistema, "Valor: ");
-        String descricao = entrada.lerObrigatorio("Descrição: ");
+        OperacaoFinanceira operacao = lerDadosOperacao(tipo);
 
-        sistema.cadastrarOperacao(cpf, numero, new OperacaoFinanceira(data, valor, descricao, tipo));
+        sistema.cadastrarOperacao(cpf, numero, operacao);
         System.out.println(tipo == TipoOperacao.DEPOSITO
                 ? "Depósito lançado com sucesso."
                 : "Retirada lançada com sucesso.");
@@ -356,14 +366,17 @@ public final class Main extends InterfaceTerminal {
         int indice = selecionarOperacao(cpf, numero);
         if (indice < 0) return;
 
+        int tipoOp = entrada.lerInteiro("Tipo (1 = depósito, 2 = retirada): ", 1, 2);
+        TipoOperacao tipo = tipoOp == 1 ? TipoOperacao.DEPOSITO : TipoOperacao.RETIRADA;
+        sistema.alterarOperacao(cpf, numero, indice, lerDadosOperacao(tipo));
+        System.out.println("Operação atualizada com sucesso.");
+    }
+
+    private OperacaoFinanceira lerDadosOperacao(TipoOperacao tipo) {
         LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
         BigDecimal valor = AuxiliarCotacoes.lerValorEmReal(entrada, sistema, "Valor: ");
         String descricao = entrada.lerObrigatorio("Descrição: ");
-        int tipoOp = entrada.lerInteiro("Tipo (1 = depósito, 2 = retirada): ", 1, 2);
-        TipoOperacao tipo = tipoOp == 1 ? TipoOperacao.DEPOSITO : TipoOperacao.RETIRADA;
-
-        sistema.alterarOperacao(cpf, numero, indice, new OperacaoFinanceira(data, valor, descricao, tipo));
-        System.out.println("Operação atualizada com sucesso.");
+        return new OperacaoFinanceira(data, valor, descricao, tipo);
     }
 
     private void excluirOperacao() {
@@ -388,10 +401,7 @@ public final class Main extends InterfaceTerminal {
             return -1;
         }
         for (int i = 0; i < operacoes.size(); i++) {
-            OperacaoFinanceira op = operacoes.get(i);
-            System.out.printf("%d. %s | %s | %s | %s%n",
-                    i + 1, op.getData(), op.getTipo().getDescricao(),
-                    FormatadorTerminal.formatarMoeda(op.getValor()), op.getDescricao());
+            imprimirOperacao((i + 1) + ".", operacoes.get(i));
         }
         return entrada.lerInteiro("Número da operação: ", 1, operacoes.size()) - 1;
     }
@@ -399,7 +409,26 @@ public final class Main extends InterfaceTerminal {
     private void exibirExtrato() {
         String cpf = lerCpfCliente();
         String numero = entrada.lerLinha("Código da aplicação (vazio para extrato consolidado do cliente): ").trim();
+        Periodo periodo = lerPeriodoExtrato();
+        if (periodo == null) return;
 
+        List<OperacaoFinanceira> operacoes = numero.isEmpty()
+                ? sistema.getExtrato(cpf, periodo.inicio(), periodo.fim())
+                : sistema.getExtrato(cpf, numero, periodo.inicio(), periodo.fim());
+        if (operacoes.isEmpty()) {
+            System.out.println("Não há operações no período informado.");
+            return;
+        }
+        System.out.printf("Extrato de %s (%s), de %s a %s:%n",
+                FormatadorTerminal.mascararCpf(cpf),
+                numero.isEmpty() ? "consolidado" : "aplicação " + numero,
+                periodo.inicio(), periodo.fim());
+        for (OperacaoFinanceira op : operacoes) {
+            imprimirOperacao("-", op);
+        }
+    }
+
+    private Periodo lerPeriodoExtrato() {
         LocalDate dataInicial;
         LocalDate dataFinal;
         if (entrada.lerSimNao("Usar os últimos " + DIAS_EXTRATO_PADRAO + " dias? (s/n): ")) {
@@ -411,25 +440,15 @@ public final class Main extends InterfaceTerminal {
         }
         if (dataInicial.isAfter(dataFinal)) {
             System.out.println("Período inválido: a data inicial deve ser anterior ou igual à final.");
-            return;
+            return null;
         }
+        return new Periodo(dataInicial, dataFinal);
+    }
 
-        List<OperacaoFinanceira> operacoes = numero.isEmpty()
-                ? sistema.getExtrato(cpf, dataInicial, dataFinal)
-                : sistema.getExtrato(cpf, numero, dataInicial, dataFinal);
-        if (operacoes.isEmpty()) {
-            System.out.println("Não há operações no período informado.");
-            return;
-        }
-        System.out.printf("Extrato de %s (%s), de %s a %s:%n",
-                FormatadorTerminal.mascararCpf(cpf),
-                numero.isEmpty() ? "consolidado" : "aplicação " + numero,
-                dataInicial, dataFinal);
-        for (OperacaoFinanceira op : operacoes) {
-            System.out.printf("- %s | %s | %s | %s%n",
-                    op.getData(), op.getTipo().getDescricao(),
-                    FormatadorTerminal.formatarMoeda(op.getValor()), op.getDescricao());
-        }
+    private static void imprimirOperacao(String prefixo, OperacaoFinanceira op) {
+        System.out.printf("%s %s | %s | %s | %s%n",
+                prefixo, op.getData(), op.getTipo().getDescricao(),
+                FormatadorTerminal.formatarMoeda(op.getValor()), op.getDescricao());
     }
 
     // -------------------------------------------------------------------------
@@ -530,4 +549,6 @@ public final class Main extends InterfaceTerminal {
     }
 
     private record EstadoInicial(SGI sistema, boolean salvarAutomaticamenteAoSair) { }
+
+    private record Periodo(LocalDate inicio, LocalDate fim) { }
 }

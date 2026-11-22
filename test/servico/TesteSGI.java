@@ -1,18 +1,18 @@
 package test.servico;
 
-import static test.Afirmacao.*;
+import static test.util.Afirmacao.*;
 
-import dominio.AplicacaoFinanceira;
-import dominio.Cliente;
-import dominio.ConvencaoContagemDias;
-import dominio.DADOSPESSOAIS;
-import dominio.MultiplasOperacoesFinanceiras;
-import dominio.OperacaoFinanceira;
-import dominio.RegimeTributario;
-import dominio.TipoOperacao;
+import dominio.aplicacao.AplicacaoFinanceira;
+import dominio.cliente.Cliente;
+import dominio.aplicacao.ConvencaoContagemDias;
+import dominio.cliente.DADOSPESSOAIS;
+import dominio.operacao.MultiplasOperacoesFinanceiras;
+import dominio.operacao.OperacaoFinanceira;
+import dominio.tributacao.RegimeTributario;
+import dominio.operacao.TipoOperacao;
 import dominio.abstracoes.CarteiraFinanceira;
-import servico.ArmazenadorArquivo;
-import servico.SGI;
+import servico.sistema.ArmazenadorArquivo;
+import servico.sistema.SGI;
 import servico.abstracoes.ArmazenadorBase;
 
 import java.io.IOException;
@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Suíte de testes autônomos para o Sistema de Gestão de Investimentos {@link SGI}
  * e persistência atômica {@link ArmazenadorArquivo} (Item 7 da atividade didática).
  *
- * <p>Cobre exaustivamente os 5 Tiers de qualidade definidos em TEST_INFRA.md:
+ * <p>Cobre de forma sistemática os contratos, limites e robustez da camada de serviço:
  * contratos básicos, limites regulamentares (estritamente 100 clientes e rejeição do 101º),
  * busca com e sem máscara, atualização em lote restrita a dias úteis, apuração de saldos,
  * extratos individuais e consolidados polimórficos, persistência atômica TSV v3,
@@ -54,58 +54,58 @@ public final class TesteSGI {
         // =====================================================================
         // Tier 1: Sanidade, Contratos Básicos e Caminho Principal (Happy Path)
         // =====================================================================
-        test01_instanciacaoEGettersIniciais(); testesExecutados++;
-        test02_cadastrarClienteComDadosPessoais(); testesExecutados++;
-        test03_cadastrarClienteInstanciaPronta(); testesExecutados++;
-        test04_cadastrarAplicacaoEBuscar(); testesExecutados++;
-        test05_cadastrarOperacaoDepositoERetirada(); testesExecutados++;
-        test06_buscarClienteComESemFormatacaoCPF(); testesExecutados++;
-        test07_consultaSaldoIndividualEConsolidadoCliente(); testesExecutados++;
-        test08_consultaSaldoGlobalSGI(); testesExecutados++;
+        testarInstanciacaoEGettersIniciais(); testesExecutados++;
+        testarCadastrarClienteComDadosPessoais(); testesExecutados++;
+        testarCadastrarClienteInstanciaPronta(); testesExecutados++;
+        testarCadastrarAplicacaoEBuscar(); testesExecutados++;
+        testarCadastrarOperacaoDepositoERetirada(); testesExecutados++;
+        testarBuscarClienteComESemFormatacaoCPF(); testesExecutados++;
+        testarConsultaSaldoIndividualEConsolidadoCliente(); testesExecutados++;
+        testarConsultaSaldoGlobalSGI(); testesExecutados++;
 
         // =====================================================================
         // Tier 2: Fronteira, Limites e Casos de Canto (Boundary / Edge Cases)
         // =====================================================================
-        test09_limiteExato100Clientes(); testesExecutados++;
-        test10_rejeicaoCentoEPrimeiroClienteComIllegalStateException(); testesExecutados++;
-        test11_rejeicaoClienteDuplicadoMesmoCPF(); testesExecutados++;
-        test12_rejeicaoAplicacaoDuplicadaGlobalmenteNoSGI(); testesExecutados++;
-        test13_buscarClienteInexistenteRetornaOptionalEmpty(); testesExecutados++;
-        test14_operacoesParaClienteInexistenteLancaIllegalArgumentException(); testesExecutados++;
-        test15_operacoesParaAplicacaoInexistenteLancaIllegalArgumentException(); testesExecutados++;
-        test16_rejeicaoParametrosNulos(); testesExecutados++;
-        test17_imutabilidadeListaClientes(); testesExecutados++;
+        testarLimiteExato100Clientes(); testesExecutados++;
+        testarRejeicaoCentoEPrimeiroClienteComIllegalStateException(); testesExecutados++;
+        testarRejeicaoClienteDuplicadoMesmoCPF(); testesExecutados++;
+        testarRejeicaoAplicacaoDuplicadaGlobalmenteNoSGI(); testesExecutados++;
+        testarBuscarClienteInexistenteRetornaOptionalEmpty(); testesExecutados++;
+        testarOperacoesParaClienteInexistenteLancaIllegalArgumentException(); testesExecutados++;
+        testarOperacoesParaAplicacaoInexistenteLancaIllegalArgumentException(); testesExecutados++;
+        testarRejeicaoParametrosNulos(); testesExecutados++;
+        testarImutabilidadeListaClientes(); testesExecutados++;
 
         // =====================================================================
         // Tier 3: Integração Par a Par (Cross-Feature Pairwise)
         // =====================================================================
-        test18_atualizacaoEmLoteRestritaADiaUtil(); testesExecutados++;
-        test19_extratoIndividualUltimos30Dias(); testesExecutados++;
-        test20_extratoIndividualPorIntervaloPolimorfico(); testesExecutados++;
-        test21_extratoConsolidadoClienteUltimos30Dias(); testesExecutados++;
-        test22_extratoConsolidadoClientePorIntervaloPolimorfico(); testesExecutados++;
-        test23_extratoConsolidadoGlobalSGIUltimos30Dias(); testesExecutados++;
-        test24_extratoConsolidadoGlobalSGIPorIntervaloPolimorfico(); testesExecutados++;
-        test25_rejeicaoIntervaloDatasInvertido(); testesExecutados++;
+        testarAtualizacaoEmLoteRestritaADiaUtil(); testesExecutados++;
+        testarExtratoIndividualUltimos30Dias(); testesExecutados++;
+        testarExtratoIndividualPorIntervaloPolimorfico(); testesExecutados++;
+        testarExtratoConsolidadoClienteUltimos30Dias(); testesExecutados++;
+        testarExtratoConsolidadoClientePorIntervaloPolimorfico(); testesExecutados++;
+        testarExtratoConsolidadoGlobalSGIUltimos30Dias(); testesExecutados++;
+        testarExtratoConsolidadoGlobalSGIPorIntervaloPolimorfico(); testesExecutados++;
+        testarRejeicaoIntervaloDatasInvertido(); testesExecutados++;
 
         // =====================================================================
         // Tier 4: Cenários do Mundo Real e Aceitação Ponta a Ponta
         // =====================================================================
-        test26_cenarioCicloCompletoMultiplosClientesCarteiras(); testesExecutados++;
-        test27_persistenciaArquivoSalvarELerDadosCustomPath(); testesExecutados++;
-        test28_persistenciaArquivoSalvarELerDadosCaminhoPadrao(); testesExecutados++;
-        test29_roundTripMultiplosCiclosIntegridade(); testesExecutados++;
+        testarCenarioCicloCompletoMultiplosClientesCarteiras(); testesExecutados++;
+        testarPersistenciaArquivoSalvarELerDadosCustomPath(); testesExecutados++;
+        testarPersistenciaArquivoSalvarELerDadosCaminhoPadrao(); testesExecutados++;
+        testarRoundTripMultiplosCiclosIntegridade(); testesExecutados++;
 
         // =====================================================================
         // Tier 5: Endurecimento Adversarial, Estresse, Concorrência e Robustez
         // =====================================================================
-        test30_herancaSeguraSGI(); testesExecutados++;
-        test31_concorrenciaMultithreadBasicaThreadSafety(); testesExecutados++;
-        test32_resilienciaPermissoesPOSIX0600(); testesExecutados++;
-        test33_resilienciaEscapamentoCaracteresEspeciaisTSV(); testesExecutados++;
-        test34_rejeicaoArquivoCorrompidoOuInvalido(); testesExecutados++;
-        test35_atualizacaoCotacoesIntegracaoM4(); testesExecutados++;
-        test36_assinaturasItem7SetCadastroSetClientesSetCotacoesAtualizarAplicacao(); testesExecutados++;
+        testarHerancaSeguraSGI(); testesExecutados++;
+        testarConcorrenciaMultithreadBasicaThreadSafety(); testesExecutados++;
+        testarResilienciaPermissoesPOSIX0600(); testesExecutados++;
+        testarResilienciaEscapamentoCaracteresEspeciaisTSV(); testesExecutados++;
+        testarRejeicaoArquivoCorrompidoOuInvalido(); testesExecutados++;
+        testarAtualizacaoCotacoesIntegracao(); testesExecutados++;
+        testarAssinaturasItem7SetCadastroSetClientesSetCotacoesAtualizarAplicacao(); testesExecutados++;
 
         long duracao = System.currentTimeMillis() - inicio;
         System.out.printf(">>> TesteSGI CONCLUÍDO com SUCESSO: %d métodos verificados (%d ms)%n%n",
@@ -158,7 +158,7 @@ public final class TesteSGI {
     // Tier 1: Sanidade, Contratos Básicos e Caminho Principal (Happy Path)
     // =========================================================================
 
-    private static void test01_instanciacaoEGettersIniciais() {
+    private static void testarInstanciacaoEGettersIniciais() {
         SGI sgi = new SGI();
         afirmarIgual(0, sgi.getQuantidadeClientes(), "Quantidade inicial de clientes deve ser 0");
         afirmarIgual(new BigDecimal("0.00"), sgi.getSaldo(), "Saldo total inicial deve ser 0.00");
@@ -172,7 +172,7 @@ public final class TesteSGI {
         afirmarIgual(0, outro.getQuantidadeClientes(), "Nova instância criada via factory deve ter 0 clientes");
     }
 
-    private static void test02_cadastrarClienteComDadosPessoais() {
+    private static void testarCadastrarClienteComDadosPessoais() {
         SGI sgi = new SGI();
         DADOSPESSOAIS dados = new DADOSPESSOAIS("Carlos Silva", "52998224725", "11988887777");
         sgi.cadastrarCliente(dados, 1001, 20005L);
@@ -186,7 +186,7 @@ public final class TesteSGI {
         afirmarIgual(20005L, c.getNumeroConta(), "Conta deve coincidir");
     }
 
-    private static void test03_cadastrarClienteInstanciaPronta() {
+    private static void testarCadastrarClienteInstanciaPronta() {
         SGI sgi = new SGI();
         String cpf2 = gerarCpfValido(2);
         Cliente c = new Cliente("Mariana Souza", cpf2, "11977776666", 1002, 30010L);
@@ -197,7 +197,7 @@ public final class TesteSGI {
         afirmarIgual("Mariana Souza", recuperado.getDadosPessoais().getNome(), "Nome deve conferir");
     }
 
-    private static void test04_cadastrarAplicacaoEBuscar() {
+    private static void testarCadastrarAplicacaoEBuscar() {
         SGI sgi = new SGI();
         Cliente c = new Cliente("Roberto Lima", "52998224725", "11988887777", 1001, 20005L);
         sgi.cadastrarCliente(c);
@@ -211,7 +211,7 @@ public final class TesteSGI {
         afirmarIgual("CDB Ouro", buscada.get().getAplicacao().getNomeAplicacao(), "Nome da aplicação confere");
     }
 
-    private static void test05_cadastrarOperacaoDepositoERetirada() {
+    private static void testarCadastrarOperacaoDepositoERetirada() {
         SGI sgi = new SGI();
         Cliente c = new Cliente("Ana Paula", "52998224725", "11988887777", 1001, 20005L);
         sgi.cadastrarCliente(c);
@@ -229,7 +229,7 @@ public final class TesteSGI {
         afirmarIgual(new BigDecimal("1300.00"), saldo, "Saldo deve ser 1000 + 500 - 200 = 1300.00");
     }
 
-    private static void test06_buscarClienteComESemFormatacaoCPF() {
+    private static void testarBuscarClienteComESemFormatacaoCPF() {
         SGI sgi = new SGI();
         Cliente c = new Cliente("Beatriz Dias", "52998224725", "11988887777", 1001, 20005L);
         sgi.cadastrarCliente(c);
@@ -240,7 +240,7 @@ public final class TesteSGI {
         afirmarVerdadeiro(sgi.buscarCliente("529.982.247/25").isPresent(), "Busca com caracteres diversos");
     }
 
-    private static void test07_consultaSaldoIndividualEConsolidadoCliente() {
+    private static void testarConsultaSaldoIndividualEConsolidadoCliente() {
         SGI sgi = new SGI();
         Cliente c = new Cliente("Marcos Souza", "52998224725", "11988887777", 1001, 20005L);
         sgi.cadastrarCliente(c);
@@ -256,7 +256,7 @@ public final class TesteSGI {
         afirmarIgual(new BigDecimal("3500.00"), sgi.getSaldoBruto("52998224725"), "Saldo bruto consolidado cliente");
     }
 
-    private static void test08_consultaSaldoGlobalSGI() {
+    private static void testarConsultaSaldoGlobalSGI() {
         SGI sgi = new SGI();
         String cpf2 = gerarCpfValido(2);
         Cliente c1 = new Cliente("Cliente 1", "52998224725", "11911111111", 1001, 1001L);
@@ -277,7 +277,7 @@ public final class TesteSGI {
     // Tier 2: Fronteira, Limites e Casos de Canto (Boundary / Edge Cases)
     // =========================================================================
 
-    private static void test09_limiteExato100Clientes() {
+    private static void testarLimiteExato100Clientes() {
         SGI sgi = new SGI();
         for (int i = 1; i <= 100; i++) {
             sgi.cadastrarCliente(criarClienteValido(i));
@@ -286,7 +286,7 @@ public final class TesteSGI {
         afirmarIgual(100, sgi.getClientes().size(), "Lista de clientes deve conter 100 elementos");
     }
 
-    private static void test10_rejeicaoCentoEPrimeiroClienteComIllegalStateException() {
+    private static void testarRejeicaoCentoEPrimeiroClienteComIllegalStateException() {
         SGI sgi = new SGI();
         for (int i = 1; i <= 100; i++) {
             sgi.cadastrarCliente(criarClienteValido(i));
@@ -307,7 +307,7 @@ public final class TesteSGI {
         afirmarIgual(100, sgi.getQuantidadeClientes(), "Quantidade permanece estritamente em 100");
     }
 
-    private static void test11_rejeicaoClienteDuplicadoMesmoCPF() {
+    private static void testarRejeicaoClienteDuplicadoMesmoCPF() {
         SGI sgi = new SGI();
         Cliente c1 = new Cliente("Fulano", "52998224725", "11911111111", 1001, 1001L);
         sgi.cadastrarCliente(c1);
@@ -319,7 +319,7 @@ public final class TesteSGI {
         afirmarIgual(1, sgi.getQuantidadeClientes(), "Contagem de clientes não deve se alterar");
     }
 
-    private static void test12_rejeicaoAplicacaoDuplicadaGlobalmenteNoSGI() {
+    private static void testarRejeicaoAplicacaoDuplicadaGlobalmenteNoSGI() {
         SGI sgi = new SGI();
         String cpf2 = gerarCpfValido(2);
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
@@ -331,7 +331,7 @@ public final class TesteSGI {
                 IllegalArgumentException.class, "Rejeita colisão global de número de aplicação entre clientes diferentes");
     }
 
-    private static void test13_buscarClienteInexistenteRetornaOptionalEmpty() {
+    private static void testarBuscarClienteInexistenteRetornaOptionalEmpty() {
         SGI sgi = new SGI();
         String cpfInexistente = gerarCpfValido(999);
         afirmarVerdadeiro(sgi.buscarCliente(cpfInexistente).isEmpty(), "CPF inexistente retorna Optional.empty()");
@@ -340,7 +340,7 @@ public final class TesteSGI {
         afirmarVerdadeiro(sgi.buscarCliente("123").isEmpty(), "CPF curto retorna Optional.empty()");
     }
 
-    private static void test14_operacoesParaClienteInexistenteLancaIllegalArgumentException() {
+    private static void testarOperacoesParaClienteInexistenteLancaIllegalArgumentException() {
         SGI sgi = new SGI();
         String cpfInexistente = gerarCpfValido(999);
 
@@ -360,7 +360,7 @@ public final class TesteSGI {
                 IllegalArgumentException.class, "getExtrato terminal cliente inexistente");
     }
 
-    private static void test15_operacoesParaAplicacaoInexistenteLancaIllegalArgumentException() {
+    private static void testarOperacoesParaAplicacaoInexistenteLancaIllegalArgumentException() {
         SGI sgi = new SGI();
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
 
@@ -372,7 +372,7 @@ public final class TesteSGI {
                 IllegalArgumentException.class, "Operação em terminal inexistente");
     }
 
-    private static void test16_rejeicaoParametrosNulos() {
+    private static void testarRejeicaoParametrosNulos() {
         SGI sgi = new SGI();
 
         afirmarRejeicao(() -> sgi.cadastrarCliente((Cliente) null),
@@ -411,7 +411,7 @@ public final class TesteSGI {
         }, NullPointerException.class, "arquivoLerDados null");
     }
 
-    private static void test17_imutabilidadeListaClientes() {
+    private static void testarImutabilidadeListaClientes() {
         SGI sgi = new SGI();
         sgi.cadastrarCliente(criarClienteValido(1));
         List<Cliente> lista = sgi.getClientes();
@@ -426,7 +426,7 @@ public final class TesteSGI {
     // Tier 3: Integração Par a Par (Cross-Feature Pairwise)
     // =========================================================================
 
-    private static void test18_atualizacaoEmLoteRestritaADiaUtil() {
+    private static void testarAtualizacaoEmLoteRestritaADiaUtil() {
         SGI sgi = new SGI();
         Cliente c = new Cliente("Titular", "52998224725", "11911111111", 1001, 1001L);
         sgi.cadastrarCliente(c);
@@ -456,7 +456,7 @@ public final class TesteSGI {
         afirmarVerdadeiro(saldoAposSegunda.compareTo(saldoInicial) > 0, "Saldo deve ter rendimento computado na segunda-feira");
     }
 
-    private static void test19_extratoIndividualUltimos30Dias() {
+    private static void testarExtratoIndividualUltimos30Dias() {
         SGI sgi = new SGI();
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
 
@@ -480,7 +480,7 @@ public final class TesteSGI {
         afirmarIgual("Op 5d", extrato30d.get(1).getDescricao(), "Segunda operação deve ser a de 5d");
     }
 
-    private static void test20_extratoIndividualPorIntervaloPolimorfico() {
+    private static void testarExtratoIndividualPorIntervaloPolimorfico() {
         SGI sgi = new SGI();
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
 
@@ -501,7 +501,7 @@ public final class TesteSGI {
         afirmarIgual(3, extratoInt.size(), "Extrato via inteiros deve conter as 3 operações de maio");
     }
 
-    private static void test21_extratoConsolidadoClienteUltimos30Dias() {
+    private static void testarExtratoConsolidadoClienteUltimos30Dias() {
         SGI sgi = new SGI();
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
 
@@ -520,7 +520,7 @@ public final class TesteSGI {
         afirmarIgual("Op App2 10d", consolidado.get(1).getDescricao(), "Segunda em ordem cronológica");
     }
 
-    private static void test22_extratoConsolidadoClientePorIntervaloPolimorfico() {
+    private static void testarExtratoConsolidadoClientePorIntervaloPolimorfico() {
         SGI sgi = new SGI();
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
 
@@ -538,7 +538,7 @@ public final class TesteSGI {
         afirmarIgual(2, fevInt.size(), "Sobrecarga inteira de extrato consolidado de cliente");
     }
 
-    private static void test23_extratoConsolidadoGlobalSGIUltimos30Dias() {
+    private static void testarExtratoConsolidadoGlobalSGIUltimos30Dias() {
         SGI sgi = new SGI();
         String cpf2 = gerarCpfValido(2);
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
@@ -559,7 +559,7 @@ public final class TesteSGI {
         afirmarIgual("Op C2", global.get(1).getDescricao(), "Segunda do extrato global");
     }
 
-    private static void test24_extratoConsolidadoGlobalSGIPorIntervaloPolimorfico() {
+    private static void testarExtratoConsolidadoGlobalSGIPorIntervaloPolimorfico() {
         SGI sgi = new SGI();
         String cpf2 = gerarCpfValido(2);
         sgi.cadastrarCliente(new Cliente("C1", "52998224725", "11911111111", 1001, 1001L));
@@ -579,7 +579,7 @@ public final class TesteSGI {
         afirmarIgual(2, globalAbrilInt.size(), "Extrato global em abril via sobrecarga de inteiros");
     }
 
-    private static void test25_rejeicaoIntervaloDatasInvertido() {
+    private static void testarRejeicaoIntervaloDatasInvertido() {
         SGI sgi = new SGI();
         sgi.cadastrarCliente(criarClienteValido(1));
         sgi.cadastrarAplicacao(gerarCpfValido(1), criarAplicacaoPadrao("APP-1", new BigDecimal("1000"), LocalDate.of(2026, 1, 1)));
@@ -599,7 +599,7 @@ public final class TesteSGI {
     // Tier 4: Cenários do Mundo Real e Aceitação Ponta a Ponta
     // =========================================================================
 
-    private static void test26_cenarioCicloCompletoMultiplosClientesCarteiras() {
+    private static void testarCenarioCicloCompletoMultiplosClientesCarteiras() {
         SGI sgi = new SGI();
 
         // Cliente 1: Conservador (CDB Prefixado)
@@ -635,7 +635,7 @@ public final class TesteSGI {
         afirmarIgual(3, sgi.getQuantidadeClientes(), "3 clientes mantidos");
     }
 
-    private static void test27_persistenciaArquivoSalvarELerDadosCustomPath() {
+    private static void testarPersistenciaArquivoSalvarELerDadosCustomPath() {
         SGI sgiOriginal = new SGI();
         Cliente c1 = criarClienteValido(1);
         Cliente c2 = criarClienteValido(2);
@@ -679,7 +679,7 @@ public final class TesteSGI {
         }
     }
 
-    private static void test28_persistenciaArquivoSalvarELerDadosCaminhoPadrao() {
+    private static void testarPersistenciaArquivoSalvarELerDadosCaminhoPadrao() {
         Path padrao = SGI.CAMINHO_PADRAO_DADOS;
         byte[] backup = null;
         boolean existiaAntes = Files.exists(padrao);
@@ -717,7 +717,7 @@ public final class TesteSGI {
         }
     }
 
-    private static void test29_roundTripMultiplosCiclosIntegridade() {
+    private static void testarRoundTripMultiplosCiclosIntegridade() {
         Path tempPath = null;
         try {
             tempPath = Files.createTempFile("sgi_roundtrip_", ".db");
@@ -774,7 +774,7 @@ public final class TesteSGI {
         }
     }
 
-    private static void test30_herancaSeguraSGI() {
+    private static void testarHerancaSeguraSGI() {
         SGIPrivateBanking privateBanking = new SGIPrivateBanking();
         Cliente c = criarClienteValido(1);
         privateBanking.cadastrarCliente(c);
@@ -787,7 +787,7 @@ public final class TesteSGI {
         afirmarIgual(new BigDecimal("10500.00"), privateBanking.getSaldo(), "Saldo do Private Banking confere");
     }
 
-    private static void test31_concorrenciaMultithreadBasicaThreadSafety() {
+    private static void testarConcorrenciaMultithreadBasicaThreadSafety() {
         SGI sgi = new SGI();
         int qtdInicial = 10;
         for (int i = 1; i <= qtdInicial; i++) {
@@ -868,7 +868,7 @@ public final class TesteSGI {
         }
     }
 
-    private static void test32_resilienciaPermissoesPOSIX0600() {
+    private static void testarResilienciaPermissoesPOSIX0600() {
         Path tempPath = null;
         try {
             tempPath = Files.createTempFile("sgi_posix_check_", ".db");
@@ -895,7 +895,7 @@ public final class TesteSGI {
         }
     }
 
-    private static void test33_resilienciaEscapamentoCaracteresEspeciaisTSV() {
+    private static void testarResilienciaEscapamentoCaracteresEspeciaisTSV() {
         Path tempPath = null;
         try {
             tempPath = Files.createTempFile("sgi_escape_check_", ".db");
@@ -928,7 +928,7 @@ public final class TesteSGI {
         }
     }
 
-    private static void test34_rejeicaoArquivoCorrompidoOuInvalido() {
+    private static void testarRejeicaoArquivoCorrompidoOuInvalido() {
         Path tempPath = null;
         try {
             tempPath = Files.createTempFile("sgi_corrompido_", ".db");
@@ -1014,7 +1014,7 @@ public final class TesteSGI {
         }
     }
 
-    private static void test35_atualizacaoCotacoesIntegracaoM4() {
+    private static void testarAtualizacaoCotacoesIntegracao() {
         SGI sgi = new SGI();
         Map<String, BigDecimal> taxas = Map.of(
                 "SELICRA", new BigDecimal("10.75"),
@@ -1041,7 +1041,7 @@ public final class TesteSGI {
         afirmarVerdadeiro(cotacoesAtivas.containsKey("USD"), "Mapa contém USD");
     }
 
-    private static void test36_assinaturasItem7SetCadastroSetClientesSetCotacoesAtualizarAplicacao() {
+    private static void testarAssinaturasItem7SetCadastroSetClientesSetCotacoesAtualizarAplicacao() {
         SGI sgi = new SGI();
         String cpf1 = gerarCpfValido(501);
         String cpf2 = gerarCpfValido(502);

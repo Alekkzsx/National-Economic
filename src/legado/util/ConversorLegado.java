@@ -1,16 +1,19 @@
 package legado.util;
 
-import dominio.AplicacaoFinanceira;
-import dominio.ConvencaoContagemDias;
-import dominio.OperacaoFinanceira;
-import dominio.RegimeTributario;
-import dominio.TipoOperacao;
-import legado.modelo.FrequenciaResgate;
-import legado.modelo.PeriodicidadeRendimento;
+import dominio.aplicacao.AplicacaoFinanceira;
+import dominio.aplicacao.ConvencaoContagemDias;
+import dominio.operacao.OperacaoFinanceira;
+import dominio.tributacao.RegimeTributario;
+import dominio.operacao.TipoOperacao;
+import legado.modelo.aplicacao.FrequenciaResgate;
+import legado.modelo.aplicacao.PeriodicidadeRendimento;
 
 /**
  * Utilitário reutilizável de conversão entre as entidades legadas ({@code legado.modelo})
  * e o modelo acadêmico atual ({@code dominio}).
+ *
+ * <p><strong>Camada isolada de retrocompatibilidade ({@code legado/}):</strong> utilizada somente pelo
+ * {@link legado.servicos.MigradorSistemaInvestimentos} e pela suíte {@code TesteSistemaInvestimentos}.</p>
  */
 public final class ConversorLegado {
 
@@ -18,7 +21,7 @@ public final class ConversorLegado {
     }
 
     /** Converte uma aplicação financeira legada preservando termos, acumuladores e contadores. */
-    public static AplicacaoFinanceira converterAplicacao(legado.modelo.AplicacaoFinanceira origem) {
+    public static AplicacaoFinanceira converterAplicacao(legado.modelo.aplicacao.AplicacaoFinanceira origem) {
         AplicacaoFinanceira destino = new AplicacaoFinanceira(
                 origem.getNome(),
                 origem.getNumero(),
@@ -34,7 +37,7 @@ public final class ConversorLegado {
         );
         destino.setConvencaoContagemDias(converterConvencao(origem.getConvencaoContagemDias()));
         destino.setRegimeTributario(
-                origem.getRegimeTributario() == legado.modelo.RegimeTributario.TAX_FREE
+                origem.getRegimeTributario() == legado.modelo.tributacao.RegimeTributario.TAX_FREE
                         ? RegimeTributario.ISENTO
                         : RegimeTributario.PADRAO
         );
@@ -54,14 +57,14 @@ public final class ConversorLegado {
     }
 
     /** Converte um lançamento legado de operação financeira para o domínio atual. */
-    public static OperacaoFinanceira converterOperacao(legado.modelo.OperacaoFinanceira origem) {
-        TipoOperacao tipo = origem.tipo() == legado.modelo.TipoOperacao.DEPOSIT
+    public static OperacaoFinanceira converterOperacao(legado.modelo.operacao.OperacaoFinanceira origem) {
+        TipoOperacao tipo = origem.tipo() == legado.modelo.operacao.TipoOperacao.DEPOSIT
                 ? TipoOperacao.DEPOSITO
                 : TipoOperacao.RETIRADA;
         return new OperacaoFinanceira(origem.data(), origem.valor(), origem.descricao(), tipo);
     }
 
-    public static ConvencaoContagemDias converterConvencao(legado.modelo.ConvencaoContagemDias origem) {
+    public static ConvencaoContagemDias converterConvencao(legado.modelo.aplicacao.ConvencaoContagemDias origem) {
         return switch (origem) {
             case THIRTY_360 -> ConvencaoContagemDias.COMERCIAL_30_360;
             case ACTUAL_365 -> ConvencaoContagemDias.CIVIL_365;

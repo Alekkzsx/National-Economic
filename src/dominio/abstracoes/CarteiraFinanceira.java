@@ -1,7 +1,7 @@
 package dominio.abstracoes;
 
-import dominio.DiaSemana;
-import dominio.OperacaoFinanceira;
+import dominio.calendario.DiaSemana;
+import dominio.operacao.OperacaoFinanceira;
 
 import java.io.IOException;
 import java.math.BigDecimal;

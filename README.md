@@ -1,12 +1,10 @@
 # SGI — Sistema de Gestão de Investimentos
 
-Aplicação de terminal em Java 21 puro (sem bibliotecas externas nem gerenciador de build)
-para gerenciar clientes, aplicações financeiras, operações, extratos, saldos e cotações
-de mercado (`SELICRA`, `CDIR`, `USD` e `EUR`).
+Aplicação de terminal em **Java 21 SE puro** (zero dependências externas ou gerenciadores de build) para cadastrar e operar clientes, aplicações financeiras, lançamentos, extratos, saldos e cotações de mercado (`SELICRA`, `CDIR`, `USD` e `EUR`).
 
 ## Requisitos
 
-- JDK 21 ou superior (`java` e `javac` no `PATH`)
+- JDK 21 ou superior (`java` e `javac` disponíveis no `PATH`)
 
 ## Compilar e executar
 
@@ -16,26 +14,26 @@ javac -encoding UTF-8 -d compilado $(find src -name '*.java')
 java -cp compilado Main
 ```
 
-O sistema carrega automaticamente `data/sgi.db` (quando existir) e salva ao sair.
-Arquivos do formato anterior são migrados automaticamente para o TSV v3 do SGI,
-preservando um backup byte a byte em `data/sgi.db.antes-da-migracao.bak`.
+### Banco local (`data/sgi.db`)
+- O arquivo `data/sgi.db` é gerado em **tempo de execução** no formato TSV v3 (ignorado no controle de versão pelo `.gitignore`).
+- Ao iniciar, `Main` carrega automaticamente `data/sgi.db` (quando existir) e salva as alterações ao sair pela opção `0`.
+- Caso o arquivo esteja em formato antigo, ele é migrado automaticamente para TSV v3, preservando uma cópia byte a byte em `data/sgi.db.antes-da-migracao.bak`.
+- Se ocorrer falha ao abrir o arquivo padrão na inicialização, o programa inicia vazio com o salvamento automático desativado para proteger os dados originais em disco.
 
-## Servidor de cotações (Item 9 — API PTAX do Banco Central + TCP multithread)
+## Servidor de cotações (Item 9 — TCP multithread + API PTAX do Banco Central)
 
-Em outro terminal:
+Em outro terminal, após compilar `src/`:
 
 ```sh
-java -cp compilado mercado.PrincipalServidorCotacoes 5050 10.50 10.40
+java -cp compilado mercado.servidor.PrincipalServidorCotacoes 5050 10.50 10.40
 ```
 
 - **Argumentos:** `[porta] SELICRA CDIR` (porta padrão `5050`; `SELICRA` e `CDIR` em **% ao ano**).
-- **Câmbio real (`USD` e `EUR`):** obtido automaticamente na API oficial PTAX do Banco Central do Brasil
-  (`ProvedorCotacoesBancoCentral`), usando a observação mais recente dos últimos 10 dias em fins de semana/feriados.
-- **Protocolo TCP:** o cliente envia `GET_QUOTES` e recebe `OK|SELICRA=...|CDIR=...|USD=...|EUR=...`.
-- **Uso no CRUD (`Main`):** após consultar o servidor na opção **19**, as cotações ficam ativas no `SGI`:
-  - `SELICRA` e `CDIR` podem ser escolhidas ao cadastrar/alterar aplicações (`taxaMensal = taxaAnual / 1200`);
-  - `USD` e `EUR` podem ser usados ao informar valores de aportes, depósitos ou retiradas (convertidos para `R$`)
-    e exibidos como equivalência cambial nas consultas de saldo.
+- **Câmbio oficial (`USD` e `EUR`):** consultado na API PTAX OData do Banco Central do Brasil (`ProvedorCotacoesBancoCentral`), usando a observação mais recente dos últimos 10 dias (boletim `Fechamento` no caso do Euro).
+- **Protocolo ASCII:** o cliente envia `GET_QUOTES\n` e recebe `OK|SELICRA=...|CDIR=...|USD=...|EUR=...\n` (ou `ERR|INVALID_REQUEST\n`).
+- **Uso no CRUD (`Main`):** após consultar o servidor na opção **19**, as cotações permanecem ativas no `SGI`:
+  - `SELICRA` e `CDIR` podem ser selecionadas ao cadastrar/alterar aplicações (`taxaMensal = taxaAnual / 1200`);
+  - `USD` e `EUR` podem ser usados ao informar aportes, depósitos ou retiradas (convertidos para `R$`) e exibidos como equivalência cambial nas consultas de saldo.
 
 ## Testes autônomos
 
@@ -43,75 +41,72 @@ java -cp compilado mercado.PrincipalServidorCotacoes 5050 10.50 10.40
 ./executar_testes.sh
 ```
 
-Compila `src/` e `test/` do zero em `compilado/` e executa todas as **13 suítes** em `ExecutorTestes`
-(Java SE puro com `test.Afirmacao`, sem JUnit).
+Compila `src/` e `test/` do zero em `compilado/` e executa as **13 suítes** em `test.ExecutorTestes` com `-ea` (Java SE puro via `test.util.Afirmacao`, sem JUnit).
 
 ## Organização do projeto ("o que pertence ao quê")
 
-Cada pasta principal segue a mesma estrutura simétrica: classes concretas na raiz da pasta,
-`abstracoes/` com as classes abstratas da camada e `util/` com os códigos reutilizáveis:
+Cada pasta principal segue uma estrutura uniforme: **`abstracoes/`** para classes abstratas, **`util/`** para utilitários estáticos sem estado, e **subpastas por assunto comum** reunindo entidades, regras e enumerações correlatas (tanto em `src/` quanto em `test/`):
 
 ```text
-src/
-├── Main.java                                # Itens 8 e 9 — Menu CRUD interativo (extends InterfaceTerminal)
-├── dominio/                                 # Itens 1 a 6 — Regras de negócio (passíveis de herança)
-│   ├── AplicacaoFinanceira.java             # Item 1 — 19 atributos, taxas 30d, juros e resgates
-│   ├── CalculadoraTributaria.java           # Item 1 (apoio) — IOF e IR regressivo
-│   ├── OperacaoFinanceira.java              # Item 2 — Lançamento de depósito/retirada (extends RegistroDatado)
-│   ├── DiaSemana.java                       # Item 3 — Algoritmo de Zeller (0..6) e dia útil (extends RegistroDatado)
-│   ├── MultiplasOperacoesFinanceiras.java   # Item 4 — 1 Aplicação + 100 Operações (extends CarteiraFinanceira)
-│   ├── DADOSPESSOAIS.java                   # Item 5 — Nome, CPF (Receita Federal/LGPD) e celular
-│   ├── Cliente.java                         # Item 6 — Titular + 50 Aplicações (extends CarteiraFinanceira)
-│   ├── Moeda.java                           # Apoio — Parsing BR/US, arredondamento e formatação
-│   ├── [7 Enums de domínio]                 # TipoOperacao, TipoRendimento, TipoResgate, OpcaoIOF,
-│   │                                        # OpcaoIR, ConvencaoContagemDias, RegimeTributario
-│   ├── abstracoes/                          # Classes abstratas do domínio
-│   │   ├── RegistroDatado.java              # Base abstrata de data civil (DiaSemana, OperacaoFinanceira)
-│   │   └── CarteiraFinanceira.java          # Base abstrata de gestão financeira (MOF, Cliente, SGI)
-│   └── util/                                # Códigos reutilizáveis do domínio
-│       ├── ArquivoTSV.java                  # Escrita atômica, fsync, POSIX 0600 e codecs TSV v3
-│       └── ValidacaoDominio.java            # Validações comuns (texto, data civil, CPF)
-├── servico/                                 # Item 7 — Fachada global do sistema
-│   ├── SGI.java                             # Item 7 — Até 100 Clientes (extends CarteiraFinanceira)
-│   ├── ArmazenadorArquivo.java              # Persistência global TSV v3 (extends ArmazenadorBase<SGI>)
-│   ├── abstracoes/                          # Classes abstratas de serviço
-│   │   └── ArmazenadorBase.java             # Base abstrata genérica de persistência em arquivo
-│   └── util/                                # Códigos reutilizáveis de serviço
-│       └── CotacoesUtil.java                # Normalização USD<->DOLAR, EUR<->EURO e consulta
-├── terminal/                                # Itens 8 e 9 — Interação de console
-│   ├── EntradaTerminal.java                 # Leitura validada com padrões via Enter
-│   ├── TermosInvestimento.java              # Configuração personalizada usando enums de dominio/
-│   ├── abstracoes/                          # Classes abstratas de terminal
-│   │   └── InterfaceTerminal.java           # Template Method do laço interativo de menu (Main)
-│   └── util/                                # Códigos reutilizáveis do terminal
-│       ├── FormatadorTerminal.java          # Formatação de moeda, taxas, câmbio e máscara CPF
-│       └── AuxiliarCotacoes.java            # Conversão SELICRA/CDIR e BRL<->USD/EUR no CRUD
-├── mercado/                                 # Item 9 — Cliente/Servidor TCP + BCB PTAX
-│   ├── PrincipalServidorCotacoes.java       # Inicialização do servidor ([porta] SELICRA CDIR)
-│   ├── ServidorCotacoes.java                # Servidor TCP multithread (ThreadPoolExecutor)
-│   ├── ClienteCotacoes.java                 # Cliente TCP síncrono (extends ProvedorCotacoes)
-│   ├── ProvedorCotacoesBancoCentral.java    # Consulta PTAX oficial do BCB (extends ProvedorCotacoes)
-│   ├── abstracoes/                          # Classes abstratas de mercado
-│   │   └── ProvedorCotacoes.java            # Base abstrata de origens de cotações (TCP e BCB PTAX)
-│   └── util/                                # Códigos reutilizáveis de mercado/rede
-│       └── ProtocoloCotacoes.java           # Protocolo ASCII, validação simétrica e fechamento seguro
-└── legado/                                  # Isolado: compatibilidade e migração de arquivos antigos
-    ├── modelo/                              # Modelo legado mantido para leitura de arquivos antigos
-    ├── servicos/                            # SistemaInvestimentos, ArmazenadorInvestimentos e Migrador
-    ├── abstracoes/                          # Classes abstratas do legado
-    │   └── RegistroDatadoLegado.java        # Base abstrata de data civil legada
-    └── util/                                # Códigos reutilizáveis de migração
-        └── ConversorLegado.java             # Conversão legado.modelo -> dominio
-
-test/
-├── ExecutorTestes.java                      # Executor das 13 suítes autônomas
-├── Afirmacao.java                           # Utilitário de asserções em Java SE puro
-├── dominio/                                 # Testes dos Itens 1 a 6 e Moeda
-├── servico/                                 # Testes do Item 7 (SGI e ArmazenadorArquivo)
-├── mercado/                                 # Testes do Item 9 (PTAX, protocolo e servidor TCP)
-└── integracao/                              # Testes ponta a ponta (terminal, legado/migração e cotações)
+National-Economic/
+├── executar_testes.sh                                  # Compilação limpa e execução das 13 suítes (-ea)
+├── data/
+│   └── sgi.db                                          # Estado persistido em runtime (ignorado no git)
+├── docs/
+│   ├── ARQUITETURA.md                                  # Camadas, protocolos, TSV v3 e padrão Javadoc
+│   └── REGRAS_E_TESTES.md                              # Regras financeiras didáticas e guia das 13 suítes
+├── src/
+│   ├── Main.java                                       # Itens 8 e 9 — Menu CRUD interativo (extends InterfaceTerminal)
+│   ├── dominio/                                        # Itens 1 a 6 — Regras de negócio (passíveis de herança)
+│   │   ├── abstracoes/                                 # CarteiraFinanceira, RegistroDatado
+│   │   ├── aplicacao/                                  # Item 1: AplicacaoFinanceira, ConvencaoContagemDias, TipoRendimento, TipoResgate
+│   │   ├── tributacao/                                 # Item 1 (tributos): CalculadoraTributaria, OpcaoIOF, OpcaoIR, RegimeTributario
+│   │   ├── operacao/                                   # Itens 2 e 4: OperacaoFinanceira, MultiplasOperacoesFinanceiras, TipoOperacao
+│   │   ├── cliente/                                    # Itens 5 e 6: Cliente, DADOSPESSOAIS
+│   │   ├── calendario/                                 # Item 3: DiaSemana (Congruência de Zeller 0..6 e dia útil)
+│   │   └── util/                                       # ArquivoTSV, Moeda, ValidacaoDominio
+│   ├── servico/                                        # Item 7 — Fachada global sincronizada e persistência
+│   │   ├── abstracoes/                                 # ArmazenadorBase<T>
+│   │   ├── sistema/                                    # SGI, ArmazenadorArquivo
+│   │   └── util/                                       # CotacoesUtil (USD<->DOLAR, EUR<->EURO)
+│   ├── terminal/                                       # Itens 8 e 9 — Interface CLI
+│   │   ├── abstracoes/                                 # InterfaceTerminal (Template Method do menu)
+│   │   ├── interacao/                                  # EntradaTerminal, TermosInvestimento
+│   │   └── util/                                       # AuxiliarCotacoes, FormatadorTerminal
+│   ├── mercado/                                        # Item 9 — Servidor TCP multithread e API BCB PTAX
+│   │   ├── abstracoes/                                 # ProvedorCotacoes
+│   │   ├── provedores/                                 # ClienteCotacoes (TCP), ProvedorCotacoesBancoCentral (PTAX)
+│   │   ├── servidor/                                   # PrincipalServidorCotacoes, ServidorCotacoes
+│   │   └── util/                                       # ProtocoloCotacoes (wire ASCII e validação simétrica)
+│   └── legado/                                         # Isolado — somente migração retrocompatível e regressão
+│       ├── abstracoes/                                 # RegistroDatadoLegado
+│       ├── modelo/                                     # Subdividido em aplicacao/, calendario/, cliente/, operacao/, tributacao/
+│       ├── servicos/                                   # SistemaInvestimentos, ArmazenadorInvestimentos, MigradorSistemaInvestimentos
+│       └── util/                                       # ConversorLegado, Moeda
+└── test/                                               # Espelhando src/ por assunto + integracao/
+    ├── ExecutorTestes.java                             # Executor unificado (test.ExecutorTestes)
+    ├── util/                                           # Afirmacao (Asserções Java SE puro + AcaoComExcecao)
+    ├── dominio/                                        # aplicacao/, calendario/, cliente/, operacao/, util/ (7 suítes)
+    ├── servico/                                        # TesteSGI (Item 7)
+    ├── terminal/                                       # TesteEntradaTerminal (Item 8)
+    ├── mercado/                                        # provedores/, servidor/ (Item 9 — 2 suítes)
+    └── integracao/                                     # TesteIntegracaoCotacoesSGI, TesteSistemaInvestimentos
 ```
 
-Valores monetários usam `BigDecimal`; datas usam `java.time`. Atualizações financeiras operam
-somente em dias úteis (segunda a sexta), com limites de até **100 clientes**, **50 aplicações por cliente**
-e **100 operações por aplicação**.
+## Rastreabilidade dos Itens Acadêmicos (1 a 9)
+
+| Item | Escopo Acadêmico | Implementação (`src/`) | Cobertura de Testes (`test/`) |
+|---|---|---|---|
+| **1** | Aplicação Financeira (19 atributos, taxa 30d, IOF, IR regressivo, rendimentos e resgates) | `dominio/aplicacao/*`, `dominio/tributacao/*`, `dominio/util/Moeda.java` | `test.dominio.aplicacao.TesteAplicacaoFinanceira`, `test.dominio.util.TesteMoeda` |
+| **2** | Operação Financeira (depósito/retirada, data civil, valor, descrição) | `dominio/operacao/OperacaoFinanceira.java`, `dominio/operacao/TipoOperacao.java`, `dominio/abstracoes/RegistroDatado.java` | `test.dominio.operacao.TesteOperacaoFinanceira` |
+| **3** | Dia da Semana (Congruência de Zeller 0..6, nomes e dia útil) | `dominio/calendario/DiaSemana.java`, `dominio/abstracoes/RegistroDatado.java` | `test.dominio.calendario.TesteDiaSemana` |
+| **4** | Múltiplas Operações (1 aplicação + até 100 operações, extratos, TSV) | `dominio/operacao/MultiplasOperacoesFinanceiras.java`, `dominio/abstracoes/CarteiraFinanceira.java`, `dominio/util/ArquivoTSV.java` | `test.dominio.operacao.TesteMultiplasOperacoes` |
+| **5** | Dados Pessoais (nome, CPF Receita Federal com máscara LGPD, celular) | `dominio/cliente/DADOSPESSOAIS.java`, `dominio/util/ValidacaoDominio.java` | `test.dominio.cliente.TesteDadosPessoais` |
+| **6** | Cliente (titular + até 50 aplicações, extratos, saldo, TSV) | `dominio/cliente/Cliente.java`, `dominio/abstracoes/CarteiraFinanceira.java` | `test.dominio.cliente.TesteCliente` |
+| **7** | SGI (até 100 clientes, atualização em lote, saldos, extratos, TSV v3 e migração legado) | `servico/sistema/*`, `servico/abstracoes/ArmazenadorBase.java`, `servico/util/CotacoesUtil.java`, `legado/*` | `test.servico.TesteSGI`, `test.integracao.TesteSistemaInvestimentos` |
+| **8** | Interface CRUD interativa no terminal | `Main.java`, `terminal/interacao/*`, `terminal/abstracoes/InterfaceTerminal.java`, `terminal/util/FormatadorTerminal.java` | `test.terminal.TesteEntradaTerminal`, `test.integracao.TesteSistemaInvestimentos` |
+| **9** | Cotações (`SELICRA`, `CDIR`, `USD`, `EUR`), servidor TCP multithread e BCB PTAX | `mercado/*`, `terminal/util/AuxiliarCotacoes.java` | `test.mercado.provedores.TesteProvedorCotacoesBancoCentral`, `test.mercado.servidor.TesteServidorCotacoes`, `test.integracao.TesteIntegracaoCotacoesSGI` |
+
+## Documentação complementar
+- [Arquitetura, Protocolos e Padrão de Código](file:///home/alekkzsx/Documents/Github/National-Economic/docs/ARQUITETURA.md)
+- [Regras Financeiras e Guia das 13 Suítes de Teste](file:///home/alekkzsx/Documents/Github/National-Economic/docs/REGRAS_E_TESTES.md)

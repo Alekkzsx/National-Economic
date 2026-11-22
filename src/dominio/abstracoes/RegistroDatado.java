@@ -36,7 +36,13 @@ public abstract class RegistroDatado {
         this.ano = novaData.getYear();
     }
 
-    /** Hook opcional chamado após alteração de data pelos setters individuais. */
+    /**
+     * Hook opcional executado imediatamente após {@link #setDia}, {@link #setMes},
+     * {@link #setAno} ou {@link #setData}, permitindo que subclasses (como {@link dominio.calendario.DiaSemana})
+     * sincronizem campos derivados sem sobrescrever construtores.
+     *
+     * @param novaData nova data civil validada e já aplicada à instância
+     */
     protected void aoAlterarData(LocalDate novaData) {
     }
 

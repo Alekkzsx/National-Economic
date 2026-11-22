@@ -1,57 +1,90 @@
+package test.integracao;
+
+import static test.util.Afirmacao.*;
 
 import legado.abstracoes.RegistroDatadoLegado;
-import legado.modelo.OperacaoFinanceira;
-import legado.modelo.ConvencaoContagemDias;
-import legado.modelo.DataCalendario;
-import legado.modelo.OpcaoIOF;
-import legado.modelo.OpcaoIR;
-import legado.modelo.AplicacaoFinanceira;
-import legado.modelo.TipoOperacao;
-import legado.modelo.DadosPessoais;
-import legado.modelo.FrequenciaResgate;
-import legado.servicos.SistemaInvestimentos;
+import legado.modelo.aplicacao.AplicacaoFinanceira;
+import legado.modelo.aplicacao.ConvencaoContagemDias;
+import legado.modelo.cliente.DadosPessoais;
+import legado.modelo.calendario.DataCalendario;
+import legado.modelo.aplicacao.FrequenciaResgate;
+import legado.modelo.tributacao.OpcaoIOF;
+import legado.modelo.tributacao.OpcaoIR;
+import legado.modelo.operacao.OperacaoFinanceira;
+import legado.modelo.aplicacao.PeriodicidadeRendimento;
+import legado.modelo.operacao.TipoOperacao;
 import legado.servicos.MigradorSistemaInvestimentos;
-import legado.modelo.PeriodicidadeRendimento;
+import legado.servicos.SistemaInvestimentos;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 
 /**
- * Testes de integração executáveis sem biblioteca externa.
- *
- * <p>Compile o código principal junto com este arquivo e rode com
- * {@code java -ea}; cada {@code check} transforma uma regressão em falha.</p>
+ * Testes de integração da camada {@code legado/} e sua migração automática para o
+ * {@link servico.sistema.SGI}, além da paridade com o CRUD acadêmico (Itens 7 e 8).
  */
 public final class TesteSistemaInvestimentos {
-    /** Impede a instanciação da classe de teste executável. */
-    private TesteSistemaInvestimentos() { }
 
-    /** Executa as verificações de domínio, cálculo, extrato e persistência. */
+    private TesteSistemaInvestimentos() {
+    }
+
     public static void main(String[] args) throws Exception {
-        // Confere o calendário didático e a validação de datas civis.
+        testarCalendarioEDadosPessoais();
+        testarOperacaoExtensivel();
+
+        SistemaInvestimentos sistema = new SistemaInvestimentos();
+        DadosPessoais titular = new DadosPessoais("Ana Silva", "529.982.247-25", "(11) 98765-4321");
+        AplicacaoFinanceira aplicacao = testarCicloVidaSistemaInvestimentos(sistema, titular);
+
+        testarOperacoesCrud();
+        testarMigracaoParaSgiAcademico();
+        testarCrudDoSgiAcademico();
+
+        testarPersistenciaSistemaLegado(sistema, titular, aplicacao);
+        testarRendimentosPeriodicosENoPrazo();
+        testarResgatesETributos(sistema, titular);
+        testarLeituraFormatosAntigosEHistoricoInvalido();
+    }
+
+    private static void testarCalendarioEDadosPessoais() {
         DataCalendario calendarDate = new DataCalendario(24, 10, 2026);
-        check(calendarDate instanceof RegistroDatadoLegado, "DataCalendario estende RegistroDatadoLegado");
-        check(calendarDate.diaDaSemana() == 0, "data sábado por extenso numérico");
-        check(calendarDate.nomeDoDiaDaSemana().equals("sábado"), "nome do dia em pt-BR");
-        check(calendarDate.diaDaSemana(25, 10, 2026) == 1, "overload numérico da data");
-        check(calendarDate.nomeDoDiaDaSemana(26, 10, 2026).equals("segunda-feira"),
+        afirmarVerdadeiro(calendarDate instanceof RegistroDatadoLegado,
+                "DataCalendario estende RegistroDatadoLegado");
+        afirmarIgual(0, calendarDate.diaDaSemana(), "data sábado por extenso numérico");
+        afirmarIgual("sábado", calendarDate.nomeDoDiaDaSemana(), "nome do dia em pt-BR");
+        afirmarIgual(1, calendarDate.diaDaSemana(25, 10, 2026), "overload numérico da data");
+        afirmarIgual("segunda-feira", calendarDate.nomeDoDiaDaSemana(26, 10, 2026),
                 "overload por extenso da data");
-        expectRejected(() -> calendarDate.setCadastro(31, 2, 2026), "data inválida");
+        afirmarRejeicao(() -> calendarDate.setCadastro(31, 2, 2026),
+                IllegalArgumentException.class, "data inválida deve ser rejeitada");
+
         calendarDate.setCadastro(LocalDate.of(2026, 10, 26));
-        check(calendarDate.getDia() == 26 && calendarDate.getMes() == 10
-                && calendarDate.getAno() == 2026 && calendarDate.toString().contains("segunda-feira"),
+        afirmarVerdadeiro(calendarDate.getDia() == 26 && calendarDate.getMes() == 10
+                        && calendarDate.getAno() == 2026 && calendarDate.toString().contains("segunda-feira"),
                 "cadastro e getters de data");
 
-        // Verifica sobrecargas e validações das classes com cadastro mutável.
         DadosPessoais alternateData = new DadosPessoais("Pessoa", "52998224725");
-        check(alternateData.getCelular().isEmpty(), "overload de cadastro sem celular");
+        afirmarVerdadeiro(alternateData.getCelular().isEmpty(), "overload de cadastro sem celular");
         alternateData.alterarDados("Pessoa Atualizada", "(11) 98765-4321");
-        check(alternateData.getNome().equals("Pessoa Atualizada") && alternateData.getCelular().equals("11987654321"),
+        afirmarVerdadeiro("Pessoa Atualizada".equals(alternateData.getNome())
+                        && "11987654321".equals(alternateData.getCelular()),
                 "sobrecarga de alteração de dados pessoais");
+
+        DadosPessoais person = new DadosPessoais("Ana Silva", "529.982.247-25", "(11) 98765-4321");
+        afirmarFalso(person.toString().contains("52998224725"),
+                "CPF completo não pode aparecer no toString");
+        afirmarIgual(0, AplicacaoFinanceira.indiceDiaSemana(LocalDate.of(2026, 10, 24)),
+                "sábado deve mapear para zero");
+        afirmarIgual(1, AplicacaoFinanceira.indiceDiaSemana(LocalDate.of(2026, 10, 25)),
+                "domingo deve mapear para um");
+    }
+
+    private static void testarOperacaoExtensivel() {
         class SpecializedOperation extends OperacaoFinanceira {
             SpecializedOperation() {
                 super(LocalDate.of(2026, 1, 1), new BigDecimal("2"), "Inicial", TipoOperacao.DEPOSIT);
@@ -67,25 +100,23 @@ public final class TesteSistemaInvestimentos {
                 throw new AssertionError("O construtor não deve despachar para métodos sobrescrevíveis.");
             }
         }
+
         OperacaoFinanceira mutableOperation = new SpecializedOperation();
-        check(new OperationWithOverriddenSetup().valor().compareTo(new BigDecimal("2.00")) == 0,
+        afirmarIgual(new BigDecimal("2.00"), new OperationWithOverriddenSetup().valor(),
                 "construtor de operação não chama método sobrescrevível");
+
         mutableOperation.setCadastro(2, 1, 2026, new BigDecimal("3.456"), "  Atualizada  ", TipoOperacao.WITHDRAWAL);
-        check(mutableOperation.data().equals(LocalDate.of(2026, 1, 2))
-                && mutableOperation.getValor().compareTo(new BigDecimal("3.46")) == 0
-                && mutableOperation.descricao().equals("Atualizada")
-                && mutableOperation.getTipo() == TipoOperacao.WITHDRAWAL,
+        afirmarVerdadeiro(mutableOperation.data().equals(LocalDate.of(2026, 1, 2))
+                        && mutableOperation.getValor().compareTo(new BigDecimal("3.46")) == 0
+                        && "Atualizada".equals(mutableOperation.descricao())
+                        && mutableOperation.getTipo() == TipoOperacao.WITHDRAWAL,
                 "operação extensível, accessors compatíveis e cadastro sobrecarregado");
-        expectRejected(() -> mutableOperation.setValor(BigDecimal.ZERO), "valor inválido da operação");
+        afirmarRejeicao(() -> mutableOperation.setValor(BigDecimal.ZERO),
+                IllegalArgumentException.class, "valor inválido da operação deve ser rejeitado");
+    }
 
-        // CPF é validado, mas não deve ser exposto integralmente na representação.
-        DadosPessoais person = new DadosPessoais("Ana Silva", "529.982.247-25", "(11) 98765-4321");
-        check(!person.toString().contains("52998224725"), "CPF completo não pode aparecer no toString");
-        check(AplicacaoFinanceira.indiceDiaSemana(LocalDate.of(2026, 10, 24)) == 0, "sábado deve mapear para zero");
-        check(AplicacaoFinanceira.indiceDiaSemana(LocalDate.of(2026, 10, 25)) == 1, "domingo deve mapear para um");
-
-        // Configura uma aplicação com termos não padrão e testa o fluxo de operações.
-        SistemaInvestimentos sistema = new SistemaInvestimentos();
+    private static AplicacaoFinanceira testarCicloVidaSistemaInvestimentos(
+            SistemaInvestimentos sistema, DadosPessoais person) {
         sistema.cadastrarCliente(person, 12, 3456);
         AplicacaoFinanceira aplicacao = new AplicacaoFinanceira("Reserva", "INV-1", new BigDecimal("100.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
@@ -96,154 +127,164 @@ public final class TesteSistemaInvestimentos {
         aplicacao.setOpcaoIOF(OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS);
         aplicacao.setOpcaoIR(OpcaoIR.EXEMPT);
         sistema.cadastrarAplicacao(person.getCpf(), aplicacao);
+
         sistema.atualizarTodos(LocalDate.of(2026, 1, 3)); // sábado: não atualiza
-        check(aplicacao.getSaldo().compareTo(new BigDecimal("100.00")) == 0, "fim de semana sem rendimento");
+        afirmarIgual(new BigDecimal("100.00"), aplicacao.getSaldo(), "fim de semana sem rendimento");
         sistema.atualizarTodos(LocalDate.of(2026, 1, 2));
-        check(aplicacao.getSaldo().compareTo(new BigDecimal("100.10")) == 0, "rendimento diário arredondado");
-        check(!aplicacao.ehDataDeRendimento() && !aplicacao.podeResgatar(), "periodicidade e carência antes do prazo");
+        afirmarIgual(new BigDecimal("100.10"), aplicacao.getSaldo(), "rendimento diário arredondado");
+        afirmarVerdadeiro(!aplicacao.ehDataDeRendimento() && !aplicacao.podeResgatar(),
+                "periodicidade e carência antes do prazo");
+
         sistema.registrarOperacao(person.getCpf(), "INV-1",
                 new OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("5"), "Aporte", TipoOperacao.DEPOSIT));
-        check(sistema.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
-                LocalDate.of(2026, 1, 2)).size() == 1, "extrato inclusivo");
-        testarOperacoesCrud();
-        testarMigracaoParaSgiAcademico();
-        testarCrudDoSgiAcademico();
+        afirmarIgual(1, sistema.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
+                LocalDate.of(2026, 1, 2)).size(), "extrato inclusivo");
+        return aplicacao;
+    }
 
-        // Salva e restaura todos os dados, inclusive o estado do ciclo de rendimento.
-        Path arquivo = Path.of(".aplicacao-sistema-self-test.tsv");
+    private static void testarPersistenciaSistemaLegado(
+            SistemaInvestimentos sistema, DadosPessoais person, AplicacaoFinanceira aplicacao) throws IOException {
+        Path arquivo = Files.createTempFile("legado-self-test-", ".tsv");
         try {
             sistema.salvar(arquivo);
             SistemaInvestimentos restored = SistemaInvestimentos.carregar(arquivo);
-            check(restored.listarAplicacoes(person.getCpf()).size() == 1, "investimento restaurado");
-            check(restored.getSaldo(person.getCpf(), "INV-1").compareTo(sistema.getSaldo(person.getCpf(), "INV-1")) == 0,
+            afirmarIgual(1, restored.listarAplicacoes(person.getCpf()).size(), "investimento restaurado");
+            afirmarIgual(sistema.getSaldo(person.getCpf(), "INV-1"), restored.getSaldo(person.getCpf(), "INV-1"),
                     "saldo restaurado");
-            check(restored.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
-                    LocalDate.of(2026, 1, 2)).size() == 1, "operação restaurada");
+            afirmarIgual(1, restored.obterExtrato(person.getCpf(), "INV-1", LocalDate.of(2026, 1, 2),
+                    LocalDate.of(2026, 1, 2)).size(), "operação restaurada");
+
             AplicacaoFinanceira restoredInvestment = restored.listarAplicacoes(person.getCpf()).getFirst();
-            check(restoredInvestment.getPeriodicidadeRendimento() == PeriodicidadeRendimento.QUARTERLY_90_DAYS, "periodicidade restaurada");
-            check(restoredInvestment.getDiasVencimento() == 365, "vencimento restaurado");
-            check(restoredInvestment.getDiasPermanenciaMinima() == 30, "permanência mínima restaurada");
-            check(restoredInvestment.getFrequenciaResgate() == FrequenciaResgate.MONTHLY,
+            afirmarIgual(PeriodicidadeRendimento.QUARTERLY_90_DAYS, restoredInvestment.getPeriodicidadeRendimento(),
+                    "periodicidade restaurada");
+            afirmarIgual(365, restoredInvestment.getDiasVencimento(), "vencimento restaurado");
+            afirmarIgual(30, restoredInvestment.getDiasPermanenciaMinima(), "permanência mínima restaurada");
+            afirmarIgual(FrequenciaResgate.MONTHLY, restoredInvestment.getFrequenciaResgate(),
                     "frequência de resgate restaurada");
-            check(restoredInvestment.getOpcaoIOF() == OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS,
+            afirmarIgual(OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS, restoredInvestment.getOpcaoIOF(),
                     "opção IOF restaurada");
-            check(restoredInvestment.getOpcaoIR() == OpcaoIR.EXEMPT, "opção IR restaurada");
-            check(restoredInvestment.getValorResgatado().compareTo(aplicacao.getValorResgatado()) == 0,
+            afirmarIgual(OpcaoIR.EXEMPT, restoredInvestment.getOpcaoIR(), "opção IR restaurada");
+            afirmarIgual(aplicacao.getValorResgatado(), restoredInvestment.getValorResgatado(),
                     "total resgatado restaurado");
-            check(restoredInvestment.getRendimentosPendentes().compareTo(aplicacao.getRendimentosPendentes()) == 0,
+            afirmarIgual(aplicacao.getRendimentosPendentes(), restoredInvestment.getRendimentosPendentes(),
                     "rendimento pendente restaurado");
-            check(restoredInvestment.getDiasDesdeRendimento() == aplicacao.getDiasDesdeRendimento(),
+            afirmarIgual(aplicacao.getDiasDesdeRendimento(), restoredInvestment.getDiasDesdeRendimento(),
                     "contador de periodicidade restaurado");
+
             sistema.atualizarTodos(LocalDate.of(2026, 4, 1));
             restored.atualizarTodos(LocalDate.of(2026, 4, 1));
-            check(restored.getSaldo(person.getCpf(), "INV-1").compareTo(
-                    sistema.getSaldo(person.getCpf(), "INV-1")) == 0, "capitalização após restauração");
-            check(aplicacao.getRendimentosPendentes().signum() == 0, "rendimento trimestral capitalizado no dia 90");
+            afirmarIgual(sistema.getSaldo(person.getCpf(), "INV-1"), restored.getSaldo(person.getCpf(), "INV-1"),
+                    "capitalização após restauração");
+            afirmarIgual(0, aplicacao.getRendimentosPendentes().signum(),
+                    "rendimento trimestral capitalizado no dia 90");
         } finally {
             Files.deleteIfExists(arquivo);
         }
+    }
 
-        // Rendimentos periódicos ficam pendentes até o crédito configurado.
+    private static void testarRendimentosPeriodicosENoPrazo() {
         AplicacaoFinanceira periodic = new AplicacaoFinanceira("Mensal", "INV-MONTHLY", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         periodic.setPeriodicidadeRendimento(PeriodicidadeRendimento.MONTHLY_30_DAYS);
         periodic.atualizar(LocalDate.of(2026, 1, 30)); // 29 dias corridos
-        check(periodic.getSaldoCreditado().compareTo(new BigDecimal("100000.00")) == 0,
+        afirmarIgual(new BigDecimal("100000.00"), periodic.getSaldoCreditado(),
                 "rendimento mensal ainda não capitalizado");
-        check(periodic.getRendimentosPendentes().signum() > 0, "rendimento mensal acumulado como pendente");
+        afirmarVerdadeiro(periodic.getRendimentosPendentes().signum() > 0,
+                "rendimento mensal acumulado como pendente");
+
         periodic.atualizar(LocalDate.of(2026, 2, 2)); // dia 30 caiu no sábado, crédito no próximo dia útil
-        check(periodic.getRendimentosPendentes().signum() == 0, "rendimento mensal creditado");
-        check(periodic.getSaldoCreditado().compareTo(new BigDecimal("100000.00")) > 0,
+        afirmarIgual(0, periodic.getRendimentosPendentes().signum(), "rendimento mensal creditado");
+        afirmarVerdadeiro(periodic.getSaldoCreditado().compareTo(new BigDecimal("100000.00")) > 0,
                 "periodicidade mensal altera a capitalização");
+
         AplicacaoFinanceira daily = new AplicacaoFinanceira("Diário", "INV-DAILY", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         daily.atualizar(LocalDate.of(2026, 1, 30));
         daily.atualizar(LocalDate.of(2026, 2, 2));
-        check(daily.getSaldoCreditado().compareTo(periodic.getSaldoCreditado()) > 0,
+        afirmarVerdadeiro(daily.getSaldoCreditado().compareTo(periodic.getSaldoCreditado()) > 0,
                 "capitalização diária difere da mensal");
-        // A periodicidade de vencimento só credita o rendimento ao atingir o prazo.
+
         AplicacaoFinanceira atMaturity = new AplicacaoFinanceira("Vencimento", "INV-MATURITY", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         atMaturity.setDiasVencimento(30);
         atMaturity.setPeriodicidadeRendimento(PeriodicidadeRendimento.AT_MATURITY);
         atMaturity.atualizar(LocalDate.of(2026, 1, 30));
-        check(atMaturity.getSaldoCreditado().compareTo(new BigDecimal("100000.00")) == 0,
+        afirmarIgual(new BigDecimal("100000.00"), atMaturity.getSaldoCreditado(),
                 "rendimento de vencimento aguarda a maturidade");
+
         atMaturity.atualizar(LocalDate.of(2026, 2, 2));
-        check(atMaturity.venceu() && atMaturity.getRendimentosPendentes().signum() == 0
+        afirmarVerdadeiro(atMaturity.venceu() && atMaturity.getRendimentosPendentes().signum() == 0
                         && atMaturity.getSaldoCreditado().compareTo(new BigDecimal("100000.00")) > 0,
                 "rendimento creditado ao atingir maturidade");
+    }
 
-        // Resgates respeitam carência, frequência e saldo disponível.
+    private static void testarResgatesETributos(SistemaInvestimentos sistema, DadosPessoais person) {
         AplicacaoFinanceira redemption = new AplicacaoFinanceira("Resgate", "INV-REDEEM", new BigDecimal("100.00"),
-                new BigDecimal("0"), LocalDate.of(2026, 1, 1));
+                BigDecimal.ZERO, LocalDate.of(2026, 1, 1));
         redemption.setDiasPermanenciaMinima(10);
         redemption.setFrequenciaResgate(FrequenciaResgate.MONTHLY);
-        check(!redemption.podeResgatar(), "canRedeem preserva carência antes do vencimento");
-        expectRejected(() -> redemption.aplicar(new OperacaoFinanceira(LocalDate.of(2026, 1, 10),
-                new BigDecimal("1"), "Resgate antecipado", TipoOperacao.WITHDRAWAL)), "carência");
-        expectRejected(() -> redemption.aplicar(new OperacaoFinanceira(LocalDate.of(2026, 1, 30),
-                new BigDecimal("1"), "Resgate fora da frequência", TipoOperacao.WITHDRAWAL)), "frequência mensal");
+        afirmarFalso(redemption.podeResgatar(), "canRedeem preserva carência antes do vencimento");
+        afirmarRejeicao(() -> redemption.aplicar(new OperacaoFinanceira(LocalDate.of(2026, 1, 10),
+                new BigDecimal("1"), "Resgate antecipado", TipoOperacao.WITHDRAWAL)),
+                IllegalArgumentException.class, "carência deve ser rejeitada");
+        afirmarRejeicao(() -> redemption.aplicar(new OperacaoFinanceira(LocalDate.of(2026, 1, 30),
+                new BigDecimal("1"), "Resgate fora da frequência", TipoOperacao.WITHDRAWAL)),
+                IllegalArgumentException.class, "frequência mensal deve ser rejeitada");
         redemption.aplicar(new OperacaoFinanceira(LocalDate.of(2026, 1, 31),
                 new BigDecimal("1"), "Resgate mensal permitido", TipoOperacao.WITHDRAWAL));
-        expectRejected(() -> redemption.aplicar(new OperacaoFinanceira(LocalDate.of(2026, 2, 1),
+        afirmarRejeicao(() -> redemption.aplicar(new OperacaoFinanceira(LocalDate.of(2026, 2, 1),
                 new BigDecimal("1"), "Segundo resgate fora da frequência", TipoOperacao.WITHDRAWAL)),
-                "intervalo de resgate");
+                IllegalArgumentException.class, "intervalo de resgate deve ser rejeitado");
 
-        boolean insufficientFundsRejected = false;
-        try {
-            sistema.registrarOperacao(person.getCpf(), "INV-1", new OperacaoFinanceira(LocalDate.of(2026, 4, 1),
-                    new BigDecimal("9999"), "Retirada", TipoOperacao.WITHDRAWAL));
-        } catch (IllegalArgumentException expected) {
-            insufficientFundsRejected = true;
-        }
-        check(insufficientFundsRejected, "saque sem saldo deve ser rejeitado");
+        afirmarRejeicao(() -> sistema.registrarOperacao(person.getCpf(), "INV-1",
+                new OperacaoFinanceira(LocalDate.of(2026, 4, 1),
+                        new BigDecimal("9999"), "Retirada", TipoOperacao.WITHDRAWAL)),
+                IllegalArgumentException.class, "saque sem saldo deve ser rejeitado");
 
-        // Exercita as duas opções de IOF e a progressão das faixas de IR.
+        // Exercita as duas opções de IOF e a progressão das faixas de IR
         AplicacaoFinanceira taxed = new AplicacaoFinanceira("Tributável", "INV-TAX", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         taxed.setOpcaoIR(OpcaoIR.EXEMPT);
         taxed.setOpcaoIOF(OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS);
         taxed.atualizar(LocalDate.of(2026, 1, 2));
-        check(taxed.getRendimentoBruto().compareTo(new BigDecimal("100.00")) == 0, "rendimento bruto diário");
-        check(taxed.getIOF().compareTo(new BigDecimal("3.50")) == 0, "IOF sempre de 3,5%");
-        check(taxed.getIR().signum() == 0, "IR isento");
+        afirmarIgual(new BigDecimal("100.00"), taxed.getRendimentoBruto(), "rendimento bruto diário");
+        afirmarIgual(new BigDecimal("3.50"), taxed.getIOF(), "IOF sempre de 3,5%");
+        afirmarIgual(0, taxed.getIR().signum(), "IR isento");
 
         taxed.setOpcaoIOF(OpcaoIOF.THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS);
-        check(taxed.getIOF().compareTo(new BigDecimal("3.50")) == 0, "IOF de 3,5% antes de 30 dias");
+        afirmarIgual(new BigDecimal("3.50"), taxed.getIOF(), "IOF de 3,5% antes de 30 dias");
         taxed.atualizar(LocalDate.of(2026, 2, 2));
-        check(taxed.getIOF().signum() == 0, "IOF de 3,5% apenas antes de 30 dias");
+        afirmarIgual(0, taxed.getIOF().signum(), "IOF de 3,5% apenas antes de 30 dias");
         taxed.setOpcaoIR(OpcaoIR.REGRESSIVE);
-        check(taxed.getIR().signum() > 0, "IR regressivo tributável");
+        afirmarVerdadeiro(taxed.getIR().signum() > 0, "IR regressivo tributável");
 
-        boolean invalidMaturityRejected = false;
-        try {
+        afirmarRejeicao(() -> {
             taxed.setDiasPermanenciaMinima(50);
             taxed.setDiasVencimento(40);
-        } catch (IllegalArgumentException expected) {
-            invalidMaturityRejected = true;
-        }
-        check(invalidMaturityRejected, "permanência mínima não pode exceder vencimento");
+        }, IllegalArgumentException.class, "permanência mínima não pode exceder vencimento");
 
         AplicacaoFinanceira bands = new AplicacaoFinanceira("Faixas IR", "INV-IR", new BigDecimal("100000.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
         bands.setOpcaoIOF(OpcaoIOF.EXEMPT);
         bands.atualizar(LocalDate.of(2026, 1, 2));
         for (int day = 1; day < 180; day++) bands.incrementarDia();
-        check(bands.getIR().compareTo(new BigDecimal("22.50")) == 0, "IR 22,5% até 180 dias");
+        afirmarIgual(new BigDecimal("22.50"), bands.getIR(), "IR 22,5% até 180 dias");
         bands.incrementarDia();
-        check(bands.getIR().compareTo(new BigDecimal("20.00")) == 0, "IR 20% de 181 a 360 dias");
+        afirmarIgual(new BigDecimal("20.00"), bands.getIR(), "IR 20% de 181 a 360 dias");
         for (int day = 181; day < 360; day++) bands.incrementarDia();
-        check(bands.getIR().compareTo(new BigDecimal("20.00")) == 0, "limite de 360 dias");
+        afirmarIgual(new BigDecimal("20.00"), bands.getIR(), "limite de 360 dias");
         bands.incrementarDia();
-        check(bands.getIR().compareTo(new BigDecimal("17.50")) == 0, "IR 17,5% de 361 a 720 dias");
+        afirmarIgual(new BigDecimal("17.50"), bands.getIR(), "IR 17,5% de 361 a 720 dias");
         for (int day = 361; day < 720; day++) bands.incrementarDia();
-        check(bands.getIR().compareTo(new BigDecimal("17.50")) == 0, "limite de 720 dias");
+        afirmarIgual(new BigDecimal("17.50"), bands.getIR(), "limite de 720 dias");
         bands.incrementarDia();
-        check(bands.getIR().compareTo(new BigDecimal("15.00")) == 0, "IR 15% após 720 dias");
+        afirmarIgual(new BigDecimal("15.00"), bands.getIR(), "IR 15% após 720 dias");
+    }
 
-        // Formatos antigos continuam legíveis e recebem defaults documentados.
-        Path legacyFile = Path.of(".aplicacao-sistema-v1-self-test.tsv");
+    private static void testarLeituraFormatosAntigosEHistoricoInvalido() throws IOException {
+        Path legacyFile = Files.createTempFile("legado-v1-", ".tsv");
+        Path version2File = Files.createTempFile("legado-v2-", ".tsv");
+        Path invalidHistoryFile = Files.createTempFile("legado-invalid-", ".tsv");
         try {
             Files.write(legacyFile, List.of(
                     "NATIONAL-ECONOMIC\t1",
@@ -251,33 +292,23 @@ public final class TesteSistemaInvestimentos {
                     "I\t52998224725\tOLD-1\tLegado\t100.00\t0.03\t2026-01-01\t100.00\t0.00\t2026-01-01\t0\t0\t0\tTHIRTY_360\tSTANDARD"
             ));
             SistemaInvestimentos legacy = SistemaInvestimentos.carregar(legacyFile);
-            AplicacaoFinanceira oldInvestment = legacy.listarAplicacoes("52998224725").getFirst();
-            check(oldInvestment.getPeriodicidadeRendimento() == PeriodicidadeRendimento.DAILY, "defaults aplicados ao formato v1");
-            check(oldInvestment.getOpcaoIOF() == OpcaoIOF.THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS,
+            AplicacaoFinanceira oldV1 = legacy.listarAplicacoes("52998224725").getFirst();
+            afirmarIgual(PeriodicidadeRendimento.DAILY, oldV1.getPeriodicidadeRendimento(),
+                    "defaults aplicados ao formato v1");
+            afirmarIgual(OpcaoIOF.THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS, oldV1.getOpcaoIOF(),
                     "opção IOF padrão do formato v1");
-        } finally {
-            Files.deleteIfExists(legacyFile);
-        }
 
-        // O formato intermediário mantém termos, ainda que derive o contador pendente.
-        Path version2File = Path.of(".aplicacao-sistema-v2-self-test.tsv");
-        try {
             Files.write(version2File, List.of(
                     "NATIONAL-ECONOMIC\t2",
                     "C\t52998224725\tAna Silva\t11987654321\t12\t3456",
                     "I\t52998224725\tOLD-2\tFormato v2\t100.00\t0.03\t2026-01-01\t100.00\t0.00\t2026-01-01\t0\t0\t0\tTHIRTY_360\tSTANDARD\tMONTHLY_30_DAYS\t180\t30\tMONTHLY\tEXEMPT\tREGRESSIVE"
             ));
             SistemaInvestimentos version2 = SistemaInvestimentos.carregar(version2File);
-            AplicacaoFinanceira oldInvestment = version2.listarAplicacoes("52998224725").getFirst();
-            check(oldInvestment.getPeriodicidadeRendimento() == PeriodicidadeRendimento.MONTHLY_30_DAYS, "termos v2 preservados");
-            check(oldInvestment.getDiasDesdeRendimento() == 0, "contador de rendimento v2 derivado");
-        } finally {
-            Files.deleteIfExists(version2File);
-        }
+            AplicacaoFinanceira oldV2 = version2.listarAplicacoes("52998224725").getFirst();
+            afirmarIgual(PeriodicidadeRendimento.MONTHLY_30_DAYS, oldV2.getPeriodicidadeRendimento(),
+                    "termos v2 preservados");
+            afirmarIgual(0, oldV2.getDiasDesdeRendimento(), "contador de rendimento v2 derivado");
 
-        // Arquivos corrompidos não podem incluir operação anterior à aplicação.
-        Path invalidHistoryFile = Path.of(".aplicacao-sistema-invalid-history-self-test.tsv");
-        try {
             Files.write(invalidHistoryFile, List.of(
                     "NATIONAL-ECONOMIC\t3",
                     "C\t52998224725\tAna Silva\t11987654321\t12\t3456",
@@ -286,14 +317,16 @@ public final class TesteSistemaInvestimentos {
                             + "THREE_POINT_FIVE_PERCENT_BEFORE_30_DAYS\tREGRESSIVE\t0.00\t0",
                     "O\t52998224725\tINV-INVALID\t2026-01-01\t1.00\tOperação inválida\tDEPOSIT"
             ));
-            boolean invalidHistoryRejected = false;
             try {
                 SistemaInvestimentos.carregar(invalidHistoryFile);
-            } catch (IOException expected) {
-                invalidHistoryRejected = expected.getMessage().contains("linha 4");
+                throw new AssertionError("Esperava IOException para operação anterior à aplicação.");
+            } catch (IOException esperado) {
+                afirmarVerdadeiro(esperado.getMessage().contains("linha 4"),
+                        "operação persistida anterior à aplicação deve ser rejeitada indicando a linha 4");
             }
-            check(invalidHistoryRejected, "operação persistida anterior à aplicação deve ser rejeitada");
         } finally {
+            Files.deleteIfExists(legacyFile);
+            Files.deleteIfExists(version2File);
             Files.deleteIfExists(invalidHistoryFile);
         }
     }
@@ -309,58 +342,52 @@ public final class TesteSistemaInvestimentos {
         sistema.cadastrarAplicacao(dados.getCpf(), aplicacao);
 
         sistema.alterarDadosCliente(dados.getCpf(), "Cliente Atualizado", "11999998888");
-        check(dados.getNome().equals("Cliente Atualizado"), "dados pessoais do cliente atualizados");
+        afirmarIgual("Cliente Atualizado", dados.getNome(), "dados pessoais do cliente atualizados");
 
         sistema.alterarAplicacao(dados.getCpf(), "CRUD-1", "Reserva Atualizada", new BigDecimal("0.01"));
-        check(aplicacao.getNome().equals("Reserva Atualizada"), "nome da aplicação atualizado");
-        check(aplicacao.getTaxaMensal().compareTo(new BigDecimal("0.01")) == 0,
-                "taxa mensal da aplicação atualizada");
+        afirmarIgual("Reserva Atualizada", aplicacao.getNome(), "nome da aplicação atualizado");
+        afirmarIgual(new BigDecimal("0.01"), aplicacao.getTaxaMensal(), "taxa mensal da aplicação atualizada");
 
         sistema.registrarOperacao(dados.getCpf(), "CRUD-1", new OperacaoFinanceira(
                 LocalDate.of(2026, 1, 2), new BigDecimal("20.00"), "Depósito", TipoOperacao.DEPOSIT));
         sistema.registrarOperacao(dados.getCpf(), "CRUD-1", new OperacaoFinanceira(
                 LocalDate.of(2026, 1, 2), new BigDecimal("5.00"), "Retirada", TipoOperacao.WITHDRAWAL));
-        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("115.00")) == 0,
+        afirmarIgual(new BigDecimal("115.00"), aplicacao.getSaldoCreditado(),
                 "operações alteram o saldo e registram retiradas");
-        check(aplicacao.getValorResgatado().compareTo(new BigDecimal("5.00")) == 0,
+        afirmarIgual(new BigDecimal("5.00"), aplicacao.getValorResgatado(),
                 "total de retiradas é contabilizado");
 
-        boolean edicaoInvalidaRevertida = false;
-        try {
-            sistema.alterarOperacao(dados.getCpf(), "CRUD-1", 0, new OperacaoFinanceira(
-                    LocalDate.of(2026, 1, 2), new BigDecimal("1000.00"), "Retirada inválida",
-                    TipoOperacao.WITHDRAWAL));
-        } catch (IllegalArgumentException esperada) {
-            edicaoInvalidaRevertida = true;
-        }
-        check(edicaoInvalidaRevertida, "edição financeira inválida é rejeitada");
-        check(sistema.listarOperacoes(dados.getCpf(), "CRUD-1").getFirst().descricao().equals("Depósito"),
+        afirmarRejeicao(() -> sistema.alterarOperacao(dados.getCpf(), "CRUD-1", 0, new OperacaoFinanceira(
+                LocalDate.of(2026, 1, 2), new BigDecimal("1000.00"), "Retirada inválida",
+                TipoOperacao.WITHDRAWAL)),
+                IllegalArgumentException.class, "edição financeira inválida é rejeitada");
+        afirmarIgual("Depósito", sistema.listarOperacoes(dados.getCpf(), "CRUD-1").getFirst().descricao(),
                 "edição inválida preserva o lançamento original");
-        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("115.00")) == 0,
+        afirmarIgual(new BigDecimal("115.00"), aplicacao.getSaldoCreditado(),
                 "edição inválida restaura o saldo original");
 
         sistema.alterarOperacao(dados.getCpf(), "CRUD-1", 0, new OperacaoFinanceira(
                 LocalDate.of(2026, 1, 2), new BigDecimal("30.00"), "Depósito corrigido", TipoOperacao.DEPOSIT));
-        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("125.00")) == 0,
+        afirmarIgual(new BigDecimal("125.00"), aplicacao.getSaldoCreditado(),
                 "edição válida recalcula o efeito do lançamento");
         sistema.excluirOperacao(dados.getCpf(), "CRUD-1", 1);
-        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("130.00")) == 0,
+        afirmarIgual(new BigDecimal("130.00"), aplicacao.getSaldoCreditado(),
                 "exclusão da retirada recompõe o saldo");
-        check(aplicacao.getValorResgatado().signum() == 0, "exclusão da retirada ajusta o total resgatado");
+        afirmarIgual(0, aplicacao.getValorResgatado().signum(), "exclusão da retirada ajusta o total resgatado");
         sistema.excluirOperacao(dados.getCpf(), "CRUD-1", 0);
-        check(aplicacao.getSaldoCreditado().compareTo(new BigDecimal("100.00")) == 0,
+        afirmarIgual(new BigDecimal("100.00"), aplicacao.getSaldoCreditado(),
                 "exclusão do depósito reverte seu efeito financeiro");
 
         sistema.excluirAplicacao(dados.getCpf(), "CRUD-1");
-        check(sistema.listarAplicacoes(dados.getCpf()).isEmpty(), "aplicação excluída da carteira");
+        afirmarVerdadeiro(sistema.listarAplicacoes(dados.getCpf()).isEmpty(), "aplicação excluída da carteira");
         AplicacaoFinanceira novaAplicacao = new AplicacaoFinanceira(
                 "Nova reserva", "CRUD-1", new BigDecimal("50.00"), BigDecimal.ZERO,
                 LocalDate.of(2026, 1, 1));
         sistema.cadastrarAplicacao(dados.getCpf(), novaAplicacao);
-        check(sistema.listarOperacoes(dados.getCpf(), "CRUD-1").isEmpty(),
+        afirmarVerdadeiro(sistema.listarOperacoes(dados.getCpf(), "CRUD-1").isEmpty(),
                 "nova aplicação não herda operações da aplicação excluída");
         sistema.excluirCliente(dados.getCpf());
-        check(sistema.listarClientes().isEmpty(), "cliente e carteira removidos do SGI");
+        afirmarVerdadeiro(sistema.listarClientes().isEmpty(), "cliente e carteira removidos do SGI");
     }
 
     /** Confere a conversão integral do armazenamento anterior para o SGI acadêmico. */
@@ -388,35 +415,32 @@ public final class TesteSistemaInvestimentos {
         try {
             legado.salvar(arquivoAntigo);
             byte[] conteudoAntigo = Files.readAllBytes(arquivoAntigo);
-            servico.SGI migrado = MigradorSistemaInvestimentos.carregarComMigracao(arquivoAntigo);
-            check(java.util.Arrays.equals(conteudoAntigo, Files.readAllBytes(backup)),
+            servico.sistema.SGI migrado = MigradorSistemaInvestimentos.carregarComMigracao(arquivoAntigo);
+            afirmarVerdadeiro(Arrays.equals(conteudoAntigo, Files.readAllBytes(backup)),
                     "migração preserva uma cópia byte a byte do arquivo anterior");
-            check(Files.readAllLines(arquivoAntigo).getFirst().equals("NATIONAL-ECONOMIC\t3"),
+            afirmarIgual("NATIONAL-ECONOMIC\t3", Files.readAllLines(arquivoAntigo).getFirst(),
                     "arquivo principal foi convertido para o formato SGI");
-            dominio.MultiplasOperacoesFinanceiras carteira =
+            dominio.operacao.MultiplasOperacoesFinanceiras carteira =
                     migrado.requererCliente(dados.getCpf()).requererAplicacao("MIG-1");
 
-            check(migrado.getQuantidadeClientes() == 1, "migração preserva o cliente");
-            check(carteira.getAplicacao().getConvencaoContagemDias()
-                            == dominio.ConvencaoContagemDias.CIVIL_365,
+            afirmarIgual(1, migrado.getQuantidadeClientes(), "migração preserva o cliente");
+            afirmarIgual(dominio.aplicacao.ConvencaoContagemDias.CIVIL_365, carteira.getAplicacao().getConvencaoContagemDias(),
                     "migração converte a convenção de dias");
-            check(carteira.getAplicacao().getTipoRendimento() == 1
+            afirmarVerdadeiro(carteira.getAplicacao().getTipoRendimento() == 1
                             && carteira.getAplicacao().getTipoResgate() == 1,
                     "migração preserva periodicidades");
-            check(carteira.getAplicacao().getIof() == 2
+            afirmarVerdadeiro(carteira.getAplicacao().getIof() == 2
                             && carteira.getAplicacao().getTipoImpostoRenda() == 0,
                     "migração preserva as políticas tributárias");
-            check(carteira.getAplicacao().getRendimentosPendentes()
-                            .compareTo(aplicacao.getRendimentosPendentes()) == 0,
+            afirmarIgual(aplicacao.getRendimentosPendentes(), carteira.getAplicacao().getRendimentosPendentes(),
                     "migração preserva rendimentos pendentes");
-            check(carteira.getSaldo().compareTo(aplicacao.getSaldo()) == 0,
+            afirmarIgual(aplicacao.getSaldo(), carteira.getSaldo(),
                     "migração preserva o saldo já contabilizado");
-            check(carteira.getOperacoes().size() == 1, "migração preserva o histórico de operações");
+            afirmarIgual(1, carteira.getOperacoes().size(), "migração preserva o histórico de operações");
 
             migrado.arquivoSalvarDados(arquivoNovo);
-            servico.SGI restaurado = servico.SGI.arquivoLerDados(arquivoNovo);
-            check(restaurado.getSaldo(dados.getCpf(), "MIG-1")
-                            .compareTo(migrado.getSaldo(dados.getCpf(), "MIG-1")) == 0,
+            servico.sistema.SGI restaurado = servico.sistema.SGI.arquivoLerDados(arquivoNovo);
+            afirmarIgual(migrado.getSaldo(dados.getCpf(), "MIG-1"), restaurado.getSaldo(dados.getCpf(), "MIG-1"),
                     "estado migrado permanece íntegro após salvar e carregar");
         } finally {
             Files.deleteIfExists(arquivoAntigo);
@@ -427,11 +451,11 @@ public final class TesteSistemaInvestimentos {
 
     /** Valida que o CRUD do terminal opera diretamente sobre a fachada acadêmica SGI. */
     private static void testarCrudDoSgiAcademico() {
-        servico.SGI sgi = new servico.SGI();
-        dominio.Cliente cliente = new dominio.Cliente(
+        servico.sistema.SGI sgi = new servico.sistema.SGI();
+        dominio.cliente.Cliente cliente = new dominio.cliente.Cliente(
                 "Cliente SGI", "52998224725", "11987654321", 12, 3456);
         sgi.cadastrarCliente(cliente);
-        dominio.AplicacaoFinanceira aplicacao = new dominio.AplicacaoFinanceira(
+        dominio.aplicacao.AplicacaoFinanceira aplicacao = new dominio.aplicacao.AplicacaoFinanceira(
                 "Reserva", "SGI-CRUD", new BigDecimal("100.00"), BigDecimal.ZERO,
                 LocalDate.of(2026, 1, 1));
         sgi.cadastrarAplicacao(cliente.getDadosPessoais().getCpf(), aplicacao);
@@ -439,58 +463,36 @@ public final class TesteSistemaInvestimentos {
         sgi.alterarCliente(cliente.getDadosPessoais().getCpf(), "Cliente Atualizado", "11999998888");
         sgi.alterarAplicacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD",
                 "Reserva Atualizada", new BigDecimal("0.01"));
-        check(cliente.getDadosPessoais().getNome().equals("Cliente Atualizado"),
+        afirmarIgual("Cliente Atualizado", cliente.getDadosPessoais().getNome(),
                 "SGI atualiza os dados do cliente");
-        check(aplicacao.getNomeAplicacao().equals("Reserva Atualizada"),
+        afirmarIgual("Reserva Atualizada", aplicacao.getNomeAplicacao(),
                 "SGI atualiza os dados descritivos da aplicação");
 
         sgi.cadastrarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD",
-                new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("20.00"),
-                        "Aporte", dominio.TipoOperacao.DEPOSITO));
+                new dominio.operacao.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("20.00"),
+                        "Aporte", dominio.operacao.TipoOperacao.DEPOSITO));
         sgi.cadastrarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD",
-                new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("5.00"),
-                        "Resgate", dominio.TipoOperacao.RETIRADA));
+                new dominio.operacao.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("5.00"),
+                        "Resgate", dominio.operacao.TipoOperacao.RETIRADA));
         sgi.alterarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD", 0,
-                new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("30.00"),
-                        "Aporte corrigido", dominio.TipoOperacao.DEPOSITO));
-        check(sgi.getSaldo(cliente.getDadosPessoais().getCpf(), "SGI-CRUD")
-                        .compareTo(new BigDecimal("125.00")) == 0,
+                new dominio.operacao.OperacaoFinanceira(LocalDate.of(2026, 1, 2), new BigDecimal("30.00"),
+                        "Aporte corrigido", dominio.operacao.TipoOperacao.DEPOSITO));
+        afirmarIgual(new BigDecimal("125.00"), sgi.getSaldo(cliente.getDadosPessoais().getCpf(), "SGI-CRUD"),
                 "SGI recalcula o saldo após edição de operação");
 
         sgi.excluirOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD", 1);
-        check(sgi.getSaldo(cliente.getDadosPessoais().getCpf(), "SGI-CRUD")
-                        .compareTo(new BigDecimal("130.00")) == 0,
+        afirmarIgual(new BigDecimal("130.00"), sgi.getSaldo(cliente.getDadosPessoais().getCpf(), "SGI-CRUD"),
                 "SGI reverte o efeito da operação excluída");
         sgi.atualizarAplicacoes(LocalDate.of(2026, 1, 5));
-        boolean edicaoBloqueada = false;
-        try {
-            sgi.alterarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD", 0,
-                    new dominio.OperacaoFinanceira(LocalDate.of(2026, 1, 2),
-                            new BigDecimal("40.00"), "Alteração tardia", dominio.TipoOperacao.DEPOSITO));
-        } catch (IllegalStateException esperada) {
-            edicaoBloqueada = true;
-        }
-        check(edicaoBloqueada, "SGI bloqueia edição depois da apuração de rendimentos");
+        afirmarRejeicao(() -> sgi.alterarOperacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD", 0,
+                new dominio.operacao.OperacaoFinanceira(LocalDate.of(2026, 1, 2),
+                        new BigDecimal("40.00"), "Alteração tardia", dominio.operacao.TipoOperacao.DEPOSITO)),
+                IllegalStateException.class, "SGI bloqueia edição depois da apuração de rendimentos");
+
         sgi.excluirAplicacao(cliente.getDadosPessoais().getCpf(), "SGI-CRUD");
-        check(sgi.getAplicacoes(cliente.getDadosPessoais().getCpf()).isEmpty(),
+        afirmarVerdadeiro(sgi.getAplicacoes(cliente.getDadosPessoais().getCpf()).isEmpty(),
                 "SGI remove a aplicação da carteira");
         sgi.excluirCliente(cliente.getDadosPessoais().getCpf());
-        check(sgi.getQuantidadeClientes() == 0, "SGI remove o cliente e seus dados vinculados");
-    }
-
-    /** Falha imediatamente com uma mensagem curta quando uma expectativa não se cumpre. */
-    private static void check(boolean condition, String message) {
-        test.Afirmacao.afirmar(condition, message);
-    }
-
-    /** Confirma que a ação fornecida rejeita dados inválidos com erro de validação. */
-    private static void expectRejected(Runnable action, String message) {
-        boolean rejected = false;
-        try {
-            action.run();
-        } catch (IllegalArgumentException expected) {
-            rejected = true;
-        }
-        check(rejected, message + " deve ser rejeitado");
+        afirmarIgual(0, sgi.getQuantidadeClientes(), "SGI remove o cliente e seus dados vinculados");
     }
 }

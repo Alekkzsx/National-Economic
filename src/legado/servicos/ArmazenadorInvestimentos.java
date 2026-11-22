@@ -1,16 +1,16 @@
 package legado.servicos;
 
-import legado.modelo.ContaCliente;
-import legado.modelo.ConvencaoContagemDias;
-import legado.modelo.OperacaoFinanceira;
-import legado.modelo.AplicacaoFinanceira;
-import legado.modelo.OpcaoIOF;
-import legado.modelo.OpcaoIR;
-import legado.modelo.TipoOperacao;
-import legado.modelo.DadosPessoais;
-import legado.modelo.FrequenciaResgate;
-import legado.modelo.RegimeTributario;
-import legado.modelo.PeriodicidadeRendimento;
+import legado.modelo.cliente.ContaCliente;
+import legado.modelo.aplicacao.ConvencaoContagemDias;
+import legado.modelo.operacao.OperacaoFinanceira;
+import legado.modelo.aplicacao.AplicacaoFinanceira;
+import legado.modelo.tributacao.OpcaoIOF;
+import legado.modelo.tributacao.OpcaoIR;
+import legado.modelo.operacao.TipoOperacao;
+import legado.modelo.cliente.DadosPessoais;
+import legado.modelo.aplicacao.FrequenciaResgate;
+import legado.modelo.tributacao.RegimeTributario;
+import legado.modelo.aplicacao.PeriodicidadeRendimento;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;

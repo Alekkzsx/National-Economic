@@ -1,13 +1,13 @@
 package test.integracao;
 
-import static test.Afirmacao.*;
+import static test.util.Afirmacao.*;
 
-import dominio.AplicacaoFinanceira;
-import dominio.OperacaoFinanceira;
-import dominio.TipoOperacao;
-import mercado.ClienteCotacoes;
-import mercado.ServidorCotacoes;
-import servico.SGI;
+import dominio.aplicacao.AplicacaoFinanceira;
+import dominio.operacao.OperacaoFinanceira;
+import dominio.operacao.TipoOperacao;
+import mercado.provedores.ClienteCotacoes;
+import mercado.servidor.ServidorCotacoes;
+import servico.sistema.SGI;
 import terminal.util.AuxiliarCotacoes;
 
 import java.io.IOException;
@@ -106,13 +106,10 @@ public final class TesteIntegracaoCotacoesSGI {
             portaFechada = temp.getPorta();
         }
 
-        afirmarRejeicao(() -> {
-            try {
-                new ClienteCotacoes("127.0.0.1", portaFechada).obterCotacoes();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }, RuntimeException.class, "conexão em porta fechada falha com IOException");
+        afirmarRejeicao(
+                () -> new ClienteCotacoes("127.0.0.1", portaFechada).obterCotacoes(),
+                IOException.class,
+                "conexão em porta fechada falha com IOException");
 
         afirmarIgual(new BigDecimal("10.50"), sgi.getCotacao("SELICRA").orElse(null),
                 "cotações anteriores permanecem intactas após falha de rede");

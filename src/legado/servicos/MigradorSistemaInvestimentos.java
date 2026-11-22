@@ -1,14 +1,14 @@
 package legado.servicos;
 
-import dominio.AplicacaoFinanceira;
-import dominio.Cliente;
-import dominio.DADOSPESSOAIS;
-import dominio.DiaSemana;
-import dominio.MultiplasOperacoesFinanceiras;
-import legado.modelo.ContaCliente;
-import legado.modelo.DadosPessoais;
+import dominio.aplicacao.AplicacaoFinanceira;
+import dominio.cliente.Cliente;
+import dominio.cliente.DADOSPESSOAIS;
+import dominio.calendario.DiaSemana;
+import dominio.operacao.MultiplasOperacoesFinanceiras;
+import legado.modelo.cliente.ContaCliente;
+import legado.modelo.cliente.DadosPessoais;
 import legado.util.ConversorLegado;
-import servico.SGI;
+import servico.sistema.SGI;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,7 +18,10 @@ import java.util.Objects;
 
 /**
  * Converte arquivos salvos no formato anterior do terminal para o modelo acadêmico {@link SGI},
- * preservando um backup byte a byte antes da substituição.
+ * preservando um backup byte a byte ({@code .antes-da-migracao.bak}) antes da substituição.
+ *
+ * <p><strong>Camada isolada de retrocompatibilidade ({@code legado/}):</strong> mantida exclusivamente
+ * para migração automática de dados legados e cobertura pela suíte {@code TesteSistemaInvestimentos}.</p>
  */
 public final class MigradorSistemaInvestimentos {
 
@@ -56,12 +59,12 @@ public final class MigradorSistemaInvestimentos {
             );
             migrado.cadastrarCliente(cliente);
 
-            for (legado.modelo.AplicacaoFinanceira appLegada : clienteLegado.listarAplicacoes()) {
+            for (legado.modelo.aplicacao.AplicacaoFinanceira appLegada : clienteLegado.listarAplicacoes()) {
                 AplicacaoFinanceira aplicacao = ConversorLegado.converterAplicacao(appLegada);
                 MultiplasOperacoesFinanceiras carteira = new MultiplasOperacoesFinanceiras(
                         aplicacao, new DiaSemana(aplicacao.getDataAplicacao()));
 
-                for (legado.modelo.OperacaoFinanceira opLegada :
+                for (legado.modelo.operacao.OperacaoFinanceira opLegada :
                         legado.listarOperacoes(dadosLegados.getCpf(), appLegada.getNumero())) {
                     carteira.vincularOperacaoRestaurada(ConversorLegado.converterOperacao(opLegada));
                 }

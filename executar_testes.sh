@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # ==============================================================================
 # Script Autônomo de Compilação e Execução de Testes do SGI
@@ -15,18 +15,15 @@ echo "==========================================================================
 
 rm -rf compilado && mkdir -p compilado
 
+# [1/2] Compila todas as fontes Java de produção e teste em UTF-8
 echo "[1/2] Compilando código-fonte e testes..."
-SOURCES=$(find src test -type f -name '*.java' 2>/dev/null)
-if [ -z "${SOURCES}" ]; then
+if ! find src test -type f -name '*.java' -print0 | grep -qz .; then
     echo "ERRO: Nenhum arquivo .java encontrado em src/ ou test/!" >&2
     exit 1
 fi
-
-javac -encoding UTF-8 -d compilado ${SOURCES}
+find src test -type f -name '*.java' -print0 | xargs -0 javac -encoding UTF-8 -d compilado
 echo "Compilação concluída com sucesso em compilado/."
 
-echo "[2/2] Executando suíte mestre de testes (java -ea -cp compilado ExecutorTestes)..."
-java -ea -cp compilado ExecutorTestes
-
-EXIT_CODE=$?
-exit ${EXIT_CODE}
+# [2/2] Executa o executor mestre com assertions da JVM ativadas (-ea)
+echo "[2/2] Executando suíte mestre de testes (java -ea -cp compilado test.ExecutorTestes)..."
+java -ea -cp compilado test.ExecutorTestes

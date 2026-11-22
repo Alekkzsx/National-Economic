@@ -1,6 +1,6 @@
 package terminal.abstracoes;
 
-import terminal.EntradaTerminal;
+import terminal.interacao.EntradaTerminal;
 import terminal.util.FormatadorTerminal;
 
 import java.util.Objects;

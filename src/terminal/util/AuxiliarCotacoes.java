@@ -1,8 +1,8 @@
 package terminal.util;
 
-import dominio.Moeda;
-import servico.SGI;
-import terminal.EntradaTerminal;
+import dominio.util.Moeda;
+import servico.sistema.SGI;
+import terminal.interacao.EntradaTerminal;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -64,6 +64,10 @@ public final class AuxiliarCotacoes {
         return valorEmReal.divide(cotacao, 2, RoundingMode.HALF_UP);
     }
 
+    private record OpcaoTaxa(String rotulo, BigDecimal taxaMensal) { }
+
+    private record OpcaoMoeda(String codigo, String rotulo, BigDecimal cotacao) { }
+
     /** Lê a taxa mensal permitindo escolher SELICRA ou CDIR quando carregadas no SGI. */
     public static BigDecimal lerTaxaMensal(EntradaTerminal entrada, SGI sistema) {
         Optional<BigDecimal> selicra = sistema.getCotacao("SELICRA");
@@ -72,29 +76,24 @@ public final class AuxiliarCotacoes {
             return entrada.lerTaxaMensal();
         }
 
-        List<String> opcoes = new ArrayList<>();
-        List<BigDecimal> taxasMensais = new ArrayList<>();
-        opcoes.add("1 = informar manualmente");
-        taxasMensais.add(null);
+        List<OpcaoTaxa> opcoes = new ArrayList<>();
+        opcoes.add(new OpcaoTaxa("1 = informar manualmente", null));
+        selicra.ifPresent(valor -> adicionarOpcaoTaxa(opcoes, "SELICRA", valor));
+        cdir.ifPresent(valor -> adicionarOpcaoTaxa(opcoes, "CDIR", valor));
 
-        if (selicra.isPresent()) {
-            BigDecimal mensal = taxaMensalDeAnualPercentual(selicra.get());
-            opcoes.add((opcoes.size() + 1) + " = SELICRA ("
-                    + FormatadorTerminal.formatarTaxaAnual(selicra.get()) + " -> " + mensal + "/mês)");
-            taxasMensais.add(mensal);
-        }
-        if (cdir.isPresent()) {
-            BigDecimal mensal = taxaMensalDeAnualPercentual(cdir.get());
-            opcoes.add((opcoes.size() + 1) + " = CDIR ("
-                    + FormatadorTerminal.formatarTaxaAnual(cdir.get()) + " -> " + mensal + "/mês)");
-            taxasMensais.add(mensal);
-        }
-
+        List<String> rotulos = opcoes.stream().map(OpcaoTaxa::rotulo).toList();
         int escolha = entrada.lerInteiroComPadrao(
-                "Origem da taxa (" + String.join(", ", opcoes) + ") [1]: ",
+                "Origem da taxa (" + String.join(", ", rotulos) + ") [1]: ",
                 1, opcoes.size(), 1);
-        BigDecimal selecionada = taxasMensais.get(escolha - 1);
+        BigDecimal selecionada = opcoes.get(escolha - 1).taxaMensal();
         return selecionada == null ? entrada.lerTaxaMensal() : selecionada;
+    }
+
+    private static void adicionarOpcaoTaxa(List<OpcaoTaxa> opcoes, String nome, BigDecimal taxaAnual) {
+        BigDecimal mensal = taxaMensalDeAnualPercentual(taxaAnual);
+        String rotulo = (opcoes.size() + 1) + " = " + nome + " ("
+                + FormatadorTerminal.formatarTaxaAnual(taxaAnual) + " -> " + mensal + "/mês)";
+        opcoes.add(new OpcaoTaxa(rotulo, mensal));
     }
 
     /** Lê um valor positivo em BRL, USD ou EUR (quando cotações ativas), convertendo para BRL. */
@@ -105,44 +104,37 @@ public final class AuxiliarCotacoes {
             return entrada.lerValorPositivo(prompt);
         }
 
-        List<String> rotulos = new ArrayList<>();
-        List<String> codigos = new ArrayList<>();
-        List<BigDecimal> cotacoes = new ArrayList<>();
-        rotulos.add("1 = BRL");
-        codigos.add("BRL");
-        cotacoes.add(null);
+        List<OpcaoMoeda> opcoes = new ArrayList<>();
+        opcoes.add(new OpcaoMoeda("BRL", "1 = BRL", null));
+        usd.ifPresent(c -> adicionarOpcaoMoeda(opcoes, "USD", c));
+        eur.ifPresent(c -> adicionarOpcaoMoeda(opcoes, "EUR", c));
 
-        if (usd.isPresent()) {
-            rotulos.add((rotulos.size() + 1) + " = USD (" + FormatadorTerminal.formatarCambio(usd.get()) + ")");
-            codigos.add("USD");
-            cotacoes.add(usd.get());
-        }
-        if (eur.isPresent()) {
-            rotulos.add((rotulos.size() + 1) + " = EUR (" + FormatadorTerminal.formatarCambio(eur.get()) + ")");
-            codigos.add("EUR");
-            cotacoes.add(eur.get());
-        }
-
+        List<String> rotulos = opcoes.stream().map(OpcaoMoeda::rotulo).toList();
         int escolha = entrada.lerInteiroComPadrao(
                 "Moeda (" + String.join(", ", rotulos) + ") [1]: ",
-                1, rotulos.size(), 1);
-        BigDecimal cotacao = cotacoes.get(escolha - 1);
-        if (cotacao == null) {
+                1, opcoes.size(), 1);
+        OpcaoMoeda selecionada = opcoes.get(escolha - 1);
+        if (selecionada.cotacao() == null) {
             return entrada.lerValorPositivo(prompt);
         }
 
-        String codigo = codigos.get(escolha - 1);
         while (true) {
-            BigDecimal valorEstrangeiro = entrada.lerValorPositivo(prompt.replace(": ", " em " + codigo + ": "));
-            BigDecimal emReal = converterParaReal(valorEstrangeiro, cotacao);
+            BigDecimal valorEstrangeiro = entrada.lerValorPositivo(
+                    prompt.replace(": ", " em " + selecionada.codigo() + ": "));
+            BigDecimal emReal = converterParaReal(valorEstrangeiro, selecionada.cotacao());
             if (emReal.signum() > 0) {
                 System.out.printf("Convertido: %s %s -> %s (cotação %s)%n",
-                        codigo, valorEstrangeiro, FormatadorTerminal.formatarMoeda(emReal),
-                        FormatadorTerminal.formatarCambio(cotacao));
+                        selecionada.codigo(), valorEstrangeiro, FormatadorTerminal.formatarMoeda(emReal),
+                        FormatadorTerminal.formatarCambio(selecionada.cotacao()));
                 return emReal;
             }
             System.out.println("O valor convertido em reais é menor que R$ 0.01. Informe um valor maior.");
         }
+    }
+
+    private static void adicionarOpcaoMoeda(List<OpcaoMoeda> opcoes, String codigo, BigDecimal cotacao) {
+        String rotulo = (opcoes.size() + 1) + " = " + codigo + " (" + FormatadorTerminal.formatarCambio(cotacao) + ")";
+        opcoes.add(new OpcaoMoeda(codigo, rotulo, cotacao));
     }
 
     /** Exibe todas as taxas e cotações recebidas do servidor no formato adequado de cada indicador. */

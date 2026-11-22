@@ -1,10 +1,10 @@
 package legado.servicos;
 
-import legado.modelo.ContaCliente;
-import legado.modelo.OperacaoFinanceira;
-import legado.modelo.AplicacaoFinanceira;
-import legado.modelo.TipoOperacao;
-import legado.modelo.DadosPessoais;
+import legado.modelo.cliente.ContaCliente;
+import legado.modelo.operacao.OperacaoFinanceira;
+import legado.modelo.aplicacao.AplicacaoFinanceira;
+import legado.modelo.operacao.TipoOperacao;
+import legado.modelo.cliente.DadosPessoais;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -19,13 +19,12 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Fachada dos serviços do SGI: mantém clientes, aplicações, operações,
- * consultas de saldo e persistência em arquivo.
+ * Fachada legada dos serviços do SGI utilizada exclusivamente na leitura e migração automática
+ * de arquivos antigos (gerando backup {@code .antes-da-migracao.bak}) e verificada pela
+ * suíte de regressão {@code TesteSistemaInvestimentos}.
  *
- * <p>Os métodos que leem ou alteram o estado são sincronizados para que uma
- * mesma instância não tenha operações concorrentes inconsistentes. O arquivo
- * TSV identifica cada linha como cliente ({@code C}), aplicação ({@code I})
- * ou operação ({@code O}).</p>
+ * <p>O código de produção ativo do trabalho acadêmico (Itens 1 a 9) encontra-se em {@link servico.sistema.SGI}
+ * e nos pacotes {@code dominio}, {@code terminal} e {@code mercado}.</p>
  */
 public class SistemaInvestimentos {
     /** Limite de clientes definido para o sistema. */
