@@ -70,15 +70,6 @@ public enum TipoResgate {
     }
 
     /**
-     * Alias de compatibilidade com classes legadas.
-     *
-     * @return intervalo em dias corridos
-     */
-    public int days() {
-        return intervaloDias;
-    }
-
-    /**
      * Retorna a descrição legível do tipo de resgate.
      *
      * @return nome textual

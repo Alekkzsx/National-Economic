@@ -1,15 +1,16 @@
 
-import modelo.OperacaoFinanceira;
-import modelo.DataCalendario;
-import modelo.OpcaoIOF;
-import modelo.OpcaoIR;
-import modelo.AplicacaoFinanceira;
-import modelo.TipoOperacao;
-import modelo.DadosPessoais;
-import modelo.FrequenciaResgate;
-import servicos.SistemaInvestimentos;
-import servicos.MigradorSistemaInvestimentos;
-import modelo.PeriodicidadeRendimento;
+import legado.modelo.OperacaoFinanceira;
+import legado.modelo.ConvencaoContagemDias;
+import legado.modelo.DataCalendario;
+import legado.modelo.OpcaoIOF;
+import legado.modelo.OpcaoIR;
+import legado.modelo.AplicacaoFinanceira;
+import legado.modelo.TipoOperacao;
+import legado.modelo.DadosPessoais;
+import legado.modelo.FrequenciaResgate;
+import legado.servicos.SistemaInvestimentos;
+import legado.servicos.MigradorSistemaInvestimentos;
+import legado.modelo.PeriodicidadeRendimento;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -368,7 +369,7 @@ public final class TesteSistemaInvestimentos {
         AplicacaoFinanceira aplicacao = new AplicacaoFinanceira(
                 "Reserva migrada", "MIG-1", new BigDecimal("100.00"),
                 new BigDecimal("0.03"), LocalDate.of(2026, 1, 1));
-        aplicacao.setConvencaoContagemDias(modelo.ConvencaoContagemDias.ACTUAL_365);
+        aplicacao.setConvencaoContagemDias(ConvencaoContagemDias.ACTUAL_365);
         aplicacao.setPeriodicidadeRendimento(PeriodicidadeRendimento.MONTHLY_30_DAYS);
         aplicacao.setFrequenciaResgate(FrequenciaResgate.MONTHLY);
         aplicacao.setOpcaoIOF(OpcaoIOF.THREE_POINT_FIVE_PERCENT_ALWAYS);
@@ -477,7 +478,7 @@ public final class TesteSistemaInvestimentos {
 
     /** Falha imediatamente com uma mensagem curta quando uma expectativa não se cumpre. */
     private static void check(boolean condition, String message) {
-        if (!condition) throw new AssertionError(message);
+        test.Afirmacao.afirmar(condition, message);
     }
 
     /** Confirma que a ação fornecida rejeita dados inválidos com erro de validação. */

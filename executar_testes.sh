@@ -13,7 +13,7 @@ echo "==========================================================================
 echo "          COMPILAÇÃO E EXECUÇÃO DA SUÍTE DE TESTES AUTÔNOMOS (SGI)              "
 echo "================================================================================"
 
-mkdir -p compilado
+rm -rf compilado && mkdir -p compilado
 
 echo "[1/2] Compilando código-fonte e testes..."
 SOURCES=$(find src test -type f -name '*.java' 2>/dev/null)

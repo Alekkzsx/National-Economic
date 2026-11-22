@@ -67,6 +67,8 @@ public final class TesteCliente {
         testarRejeicaoLeituraArquivoInvalidoOuCorrompido(); testesExecutados++;
         testarRejeicaoRegistrosTruncados(); testesExecutados++;
         testarSobrescritaToStringComCpfMascarado(); testesExecutados++;
+        testarAssinaturasItem6ESobrecargasPolimorficas(); testesExecutados++;
+        testarPersistenciaRoundTripERetrocompatibilidade23Colunas(); testesExecutados++;
 
         long duracao = System.currentTimeMillis() - inicio;
         System.out.printf(">>> TesteCliente CONCLUÍDO com SUCESSO: %d métodos verificados (%d ms)%n%n",
@@ -506,5 +508,63 @@ public final class TesteCliente {
     private static Cliente criarClientePadrao() {
         DADOSPESSOAIS dados = new DADOSPESSOAIS("Ana Carolina", "52998224725", "11987654321");
         return new Cliente(dados, 1001, 55555L);
+    }
+
+    public static void testarAssinaturasItem6ESobrecargasPolimorficas() {
+        Cliente cliente = criarClientePadrao();
+        cliente.setCadastro("Novo Nome", "00000000191", "21999998888", 2002, 77777L);
+        afirmarIgual("Novo Nome", cliente.getDadosPessoais().getNome(), "setCadastro atualizou nome");
+        afirmarIgual(2002, cliente.getNumeroAgencia(), "setCadastro atualizou agência");
+        afirmarIgual(77777L, cliente.getNumeroConta(), "setCadastro atualizou conta");
+
+        // Falha atômica preserva estado anterior
+        afirmarRejeicao(() -> cliente.setCadastro("Invalido", "00000000191", "21999998888", 0, 1L),
+                IllegalArgumentException.class, "agência zero rejeitada em setCadastro");
+        afirmarIgual("Novo Nome", cliente.getDadosPessoais().getNome(), "estado preservado após falha");
+
+        LocalDate inicio = LocalDate.of(2026, 8, 3);
+        MultiplasOperacoesFinanceiras a1 = new MultiplasOperacoesFinanceiras(
+                new AplicacaoFinanceira("CDB", "C1", new BigDecimal("1000.00"), new BigDecimal("0.01"), inicio));
+        a1.adicionarOperacao(new OperacaoFinanceira(inicio, new BigDecimal("100.00"), "Dep 1", TipoOperacao.DEPOSITO));
+        MultiplasOperacoesFinanceiras a2 = new MultiplasOperacoesFinanceiras(
+                new AplicacaoFinanceira("LCI", "C2", new BigDecimal("2000.00"), new BigDecimal("0.01"), inicio));
+        a2.adicionarOperacao(new OperacaoFinanceira(inicio.plusDays(1), new BigDecimal("200.00"), "Dep 2", TipoOperacao.DEPOSITO));
+
+        cliente.setAplicacoes(List.of(a1, a2));
+        afirmarIgual(2, cliente.getQuantidadeAplicacoes(), "setAplicacoes substituiu carteira");
+        afirmarIgual(cliente.getSaldoConsolidado(), cliente.getSaldo(), "getSaldo() equivale a getSaldoConsolidado()");
+        afirmarIgual(2, cliente.getExtrato(inicio, inicio.plusDays(5)).size(), "getExtrato(ini,fim) consolidado");
+
+        cliente.atualizarAplicacao(inicio.plusDays(1));
+        afirmarIgual(2, cliente.getExtrato().size(), "getExtrato() consolidado 30 dias");
+        afirmarVerdadeiro(cliente.getSaldo().compareTo(new BigDecimal("3300.00")) > 0, "atualizarAplicacao evoluiu carteira");
+    }
+
+    public static void testarPersistenciaRoundTripERetrocompatibilidade23Colunas() {
+        Path arq1 = null;
+        Path arq2 = null;
+        try {
+            arq1 = Files.createTempFile("teste_cli_23cols_", ".tsv");
+            arq2 = Files.createTempFile("teste_cli_rt_", ".tsv");
+
+            // Arquivo v3 com exatamente 23 colunas no registro I (retrocompatibilidade)
+            Files.writeString(arq1,
+                    "NATIONAL-ECONOMIC\t3\n"
+                    + "C\t52998224725\tCliente Retro\t11999998888\t1001\t20002\n"
+                    + "I\t52998224725\t101\tCDB\t1000.00\t0.01\t2026-01-01\t1000.00\t1000.00\t2026-01-01\t0\t0\t0\tCOMERCIAL_30_360\tPADRAO\t0\t0\t0\t0\t0\t0\t0.00\t1000.00\n");
+
+            Cliente c1 = Cliente.arquivoLerDados(arq1);
+            c1.arquivoSalvarDados(arq2);
+            Cliente c2 = Cliente.arquivoLerDados(arq2);
+
+            afirmarIgual(c1.getSaldo(), c2.getSaldo(), "round-trip idempotente a partir de v3 23 colunas");
+            List<String> linhas = Files.readAllLines(arq2);
+            afirmarIgual(26, linhas.get(2).split("\t", -1).length, "registro I regravado possui 26 colunas");
+        } catch (IOException e) {
+            throw new AssertionError("Erro no teste de retrocompatibilidade de Cliente: " + e.getMessage(), e);
+        } finally {
+            try { if (arq1 != null) Files.deleteIfExists(arq1); } catch (IOException ignored) {}
+            try { if (arq2 != null) Files.deleteIfExists(arq2); } catch (IOException ignored) {}
+        }
     }
 }

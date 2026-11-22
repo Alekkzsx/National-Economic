@@ -103,6 +103,7 @@ public final class TesteSGI {
         test33_resilienciaEscapamentoCaracteresEspeciaisTSV(); testesExecutados++;
         test34_rejeicaoArquivoCorrompidoOuInvalido(); testesExecutados++;
         test35_atualizacaoCotacoesIntegracaoM4(); testesExecutados++;
+        test36_assinaturasItem7SetCadastroSetClientesSetCotacoesAtualizarAplicacao(); testesExecutados++;
 
         long duracao = System.currentTimeMillis() - inicio;
         System.out.printf(">>> TesteSGI CONCLUÍDO com SUCESSO: %d métodos verificados (%d ms)%n%n",
@@ -1036,5 +1037,40 @@ public final class TesteSGI {
         afirmarVerdadeiro(cotacoesAtivas.containsKey("SELICRA"), "Mapa contém SELICRA");
         afirmarVerdadeiro(cotacoesAtivas.containsKey("DOLAR"), "Mapa contém DOLAR");
         afirmarVerdadeiro(cotacoesAtivas.containsKey("USD"), "Mapa contém USD");
+    }
+
+    private static void test36_assinaturasItem7SetCadastroSetClientesSetCotacoesAtualizarAplicacao() {
+        SGI sgi = new SGI();
+        String cpf1 = gerarCpfValido(501);
+        String cpf2 = gerarCpfValido(502);
+
+        // setCadastro (Item 7)
+        sgi.setCadastro("Cliente Um", cpf1, "11999990001", 10, 1001L);
+        afirmarIgual(1, sgi.getQuantidadeClientes(), "setCadastro cadastrou cliente");
+
+        // atualizarAplicacao (Item 7, singular)
+        LocalDate seg = LocalDate.of(2026, 8, 3);
+        sgi.cadastrarAplicacao(cpf1, new AplicacaoFinanceira(
+                "CDB", "SGI-I7", new BigDecimal("1000.00"), new BigDecimal("0.03"), seg));
+        sgi.atualizarAplicacao(seg.plusDays(1));
+        afirmarVerdadeiro(sgi.getSaldo(cpf1, "SGI-I7").compareTo(new BigDecimal("1000.00")) > 0,
+                "atualizarAplicacao evoluiu saldo em dia útil");
+
+        // setClientes substitui atomicamente e rejeita colisão sem corromper
+        Cliente c2 = new Cliente("Cliente Dois", cpf2, "11999990002", 20, 2002L);
+        sgi.setClientes(List.of(c2));
+        afirmarIgual(1, sgi.getQuantidadeClientes(), "setClientes substituiu lista");
+        afirmarVerdadeiro(sgi.buscarCliente(cpf2).isPresent(), "novo cliente presente");
+        afirmarVerdadeiro(sgi.buscarCliente(cpf1).isEmpty(), "cliente anterior removido");
+
+        afirmarRejeicao(() -> sgi.setClientes(List.of(c2, c2)),
+                IllegalArgumentException.class, "CPF duplicado rejeitado atomicamente");
+        afirmarIgual(1, sgi.getQuantidadeClientes(), "estado mantido intacto após falha em setClientes");
+
+        // setCotacoes substitui o conjunto anterior
+        sgi.atualizarCotacoes(Map.of("SELICRA", new BigDecimal("10.00")));
+        sgi.setCotacoes(Map.of("CDIR", new BigDecimal("9.50"), "USD", new BigDecimal("5.20")));
+        afirmarVerdadeiro(sgi.getCotacao("SELICRA").isEmpty(), "setCotacoes substitui chaves antigas");
+        afirmarIgual(new BigDecimal("5.20"), sgi.getCotacao("DOLAR").orElse(null), "espelhamento USD->DOLAR mantido");
     }
 }

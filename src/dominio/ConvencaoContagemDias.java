@@ -50,15 +50,6 @@ public enum ConvencaoContagemDias {
     }
 
     /**
-     * Alias de compatibilidade com classes legadas.
-     *
-     * @return base anual de dias
-     */
-    public int daysPerYear() {
-        return diasPorAno;
-    }
-
-    /**
      * Retorna a descrição legível da convenção.
      *
      * @return nome da convenção

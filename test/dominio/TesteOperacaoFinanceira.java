@@ -113,6 +113,14 @@ public final class TesteOperacaoFinanceira {
                 TipoOperacao.DEPOSITO
         );
         afirmarIgual(new BigDecimal("0.01"), opMin.getValor(), "deve permitir 0.01");
+
+        // Subcentavos: 0.005 arredonda para 0.01 (válido); 0.004 arredonda para 0.00 (rejeitado)
+        OperacaoFinanceira opMeioCentavo = new OperacaoFinanceira(
+                10, 5, 2026, new BigDecimal("0.005"), "Meio centavo", TipoOperacao.DEPOSITO);
+        afirmarIgual(new BigDecimal("0.01"), opMeioCentavo.getValor(), "0.005 arredonda para 0.01");
+        afirmarRejeicao(() -> new OperacaoFinanceira(
+                        10, 5, 2026, new BigDecimal("0.004"), "Subcentavo zero", TipoOperacao.DEPOSITO),
+                IllegalArgumentException.class, "0.004 arredonda para 0.00 e deve ser rejeitado");
     }
 
     /**

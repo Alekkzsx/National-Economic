@@ -2,21 +2,22 @@ package terminal;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.text.Normalizer;
 import java.util.Scanner;
 import java.util.function.Function;
 
-/** Reúne leituras e validações de entrada usadas pelo terminal. */
+/** Reúne leituras e validações simples de entrada usadas pelo terminal. */
 public final class EntradaTerminal {
+
     private final Scanner leitor;
 
     public EntradaTerminal(Scanner leitor) {
         this.leitor = leitor;
     }
 
-    /** Lê um campo sem exigir que tenha conteúdo. */
+    /** Lê uma linha sem exigir conteúdo. */
     public String lerLinha(String mensagem) {
         System.out.print(mensagem);
         if (!leitor.hasNextLine()) {
@@ -25,7 +26,13 @@ public final class EntradaTerminal {
         return leitor.nextLine();
     }
 
-    /** Repete a leitura até receber um valor não vazio. */
+    /** Lê uma linha usando {@code padrao} quando o usuário pressiona Enter em branco. */
+    public String lerLinhaComPadrao(String mensagem, String padrao) {
+        String valor = lerLinha(mensagem).trim();
+        return valor.isEmpty() ? padrao : valor;
+    }
+
+    /** Repete a leitura até receber um texto não vazio. */
     public String lerObrigatorio(String mensagem) {
         while (true) {
             String valor = lerLinha(mensagem).trim();
@@ -36,7 +43,7 @@ public final class EntradaTerminal {
         }
     }
 
-    /** Lê um inteiro dentro dos limites indicados. */
+    /** Lê um inteiro dentro do intervalo {@code [min, max]}. */
     public int lerInteiro(String mensagem, int min, int max) {
         while (true) {
             try {
@@ -45,13 +52,32 @@ public final class EntradaTerminal {
                     return valor;
                 }
             } catch (NumberFormatException ignored) {
-                // Formato inválido; a mensagem comum informa o intervalo esperado.
+                // Formato inválido; exibe intervalo esperado abaixo
             }
             System.out.printf("Informe um número inteiro entre %d e %d.%n", min, max);
         }
     }
 
-    /** Lê um inteiro longo dentro dos limites indicados. */
+    /** Lê um inteiro dentro de {@code [min, max]}, aceitando {@code padrao} em entrada vazia. */
+    public int lerInteiroComPadrao(String mensagem, int min, int max, int padrao) {
+        while (true) {
+            String texto = lerLinha(mensagem).trim();
+            if (texto.isEmpty()) {
+                return padrao;
+            }
+            try {
+                int valor = Integer.parseInt(texto);
+                if (valor >= min && valor <= max) {
+                    return valor;
+                }
+            } catch (NumberFormatException ignored) {
+                // Formato inválido; exibe intervalo esperado abaixo
+            }
+            System.out.printf("Informe um número inteiro entre %d e %d.%n", min, max);
+        }
+    }
+
+    /** Lê um inteiro longo dentro do intervalo {@code [min, max]}. */
     public long lerInteiroLongo(String mensagem, long min, long max) {
         while (true) {
             try {
@@ -60,13 +86,13 @@ public final class EntradaTerminal {
                     return valor;
                 }
             } catch (NumberFormatException ignored) {
-                // Formato inválido; a mensagem comum informa o intervalo esperado.
+                // Formato inválido; exibe intervalo esperado abaixo
             }
             System.out.printf("Informe um número inteiro entre %d e %d.%n", min, max);
         }
     }
 
-    /** Lê um valor monetário positivo. */
+    /** Lê um valor monetário estritamente positivo (> 0). */
     public BigDecimal lerValorPositivo(String mensagem) {
         while (true) {
             BigDecimal valor = lerDecimal(mensagem);
@@ -77,7 +103,7 @@ public final class EntradaTerminal {
         }
     }
 
-    /** Lê uma taxa mensal entre zero e um, inclusive. */
+    /** Lê uma taxa mensal fracionária entre 0 e 1, inclusive. */
     public BigDecimal lerTaxaMensal() {
         while (true) {
             BigDecimal valor = lerDecimal("Taxa mensal entre 0 e 1 (ex.: 0,05 para 5%): ");
@@ -88,7 +114,6 @@ public final class EntradaTerminal {
         }
     }
 
-    /** Aceita ponto ou vírgula como separador decimal. */
     private BigDecimal lerDecimal(String mensagem) {
         while (true) {
             String valor = lerLinha(mensagem).trim().replace(',', '.');
@@ -100,7 +125,7 @@ public final class EntradaTerminal {
         }
     }
 
-    /** Lê uma data no formato ISO (AAAA-MM-DD). */
+    /** Lê uma data no formato ISO ({@code AAAA-MM-DD}). */
     public LocalDate lerData(String mensagem) {
         while (true) {
             try {
@@ -111,7 +136,7 @@ public final class EntradaTerminal {
         }
     }
 
-    /** Interpreta respostas afirmativas e negativas em português. */
+    /** Interpreta respostas afirmativas (s/sim) e negativas (n/não/nao). */
     public boolean lerSimNao(String mensagem) {
         while (true) {
             String resposta = lerLinha(mensagem).trim().toLowerCase();
@@ -125,17 +150,16 @@ public final class EntradaTerminal {
         }
     }
 
-    /** Lê um caminho local digitado pelo usuário. */
+    /** Lê um caminho de arquivo local. */
     public Path lerCaminho(String mensagem) {
         return Path.of(lerObrigatorio(mensagem));
     }
 
-    /** Lê uma opção por número, nome do enum ou descrição localizada. */
+    /** Lê uma opção de enum pelo número, nome da constante ou descrição em português. */
     public <E extends Enum<E>> E lerOpcaoEnum(String campo, E[] opcoes, Function<E, String> rotulo) {
         System.out.println(campo + " — escolha pelo número ou nome:");
-        for (int indice = 0; indice < opcoes.length; indice++) {
-            E opcao = opcoes[indice];
-            System.out.printf("  %d. %s (%s)%n", indice + 1, opcao.name(), rotulo.apply(opcao));
+        for (int i = 0; i < opcoes.length; i++) {
+            System.out.printf("  %d. %s (%s)%n", i + 1, opcoes[i].name(), rotulo.apply(opcoes[i]));
         }
         while (true) {
             String resposta = lerObrigatorio(campo + ": ").trim();
@@ -145,7 +169,7 @@ public final class EntradaTerminal {
                     return opcoes[indice - 1];
                 }
             } catch (NumberFormatException ignored) {
-                // Também são aceitos os nomes e rótulos exibidos acima.
+                // Também aceita nome ou rótulo
             }
             String normalizado = normalizarOpcao(resposta);
             for (E opcao : opcoes) {
@@ -158,7 +182,6 @@ public final class EntradaTerminal {
         }
     }
 
-    /** Normaliza acentos e pontuação para comparar opções digitadas. */
     private static String normalizarOpcao(String valor) {
         return Normalizer.normalize(valor, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
@@ -167,10 +190,11 @@ public final class EntradaTerminal {
                 .toUpperCase();
     }
 
-    /** Indica que a entrada padrão foi fechada. */
+    /** Indica encerramento da entrada padrão. */
     public static final class EndOfInputException extends RuntimeException {
         private static final long serialVersionUID = 1L;
 
-        public EndOfInputException() { }
+        public EndOfInputException() {
+        }
     }
 }

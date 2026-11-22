@@ -74,15 +74,6 @@ public enum TipoRendimento {
     }
 
     /**
-     * Alias de compatibilidade com classes legadas.
-     *
-     * @return quantidade de dias corridos do ciclo
-     */
-    public int days() {
-        return intervaloDias;
-    }
-
-    /**
      * Retorna a descrição legível da periodicidade.
      *
      * @return nome descritivo

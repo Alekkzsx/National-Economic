@@ -1,21 +1,22 @@
-import mercado.ClienteCotacoes;
 import dominio.AplicacaoFinanceira;
 import dominio.Cliente;
 import dominio.DADOSPESSOAIS;
+import dominio.DiaSemana;
 import dominio.MultiplasOperacoesFinanceiras;
 import dominio.OperacaoFinanceira;
 import dominio.TipoOperacao;
+import legado.servicos.MigradorSistemaInvestimentos;
+import mercado.ClienteCotacoes;
 import servico.SGI;
-import servicos.MigradorSistemaInvestimentos;
 import terminal.EntradaTerminal;
-import terminal.FormatadorTerminal;
 import terminal.TermosInvestimento;
+import terminal.util.AuxiliarCotacoes;
+import terminal.util.FormatadorTerminal;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -23,66 +24,44 @@ import java.util.Optional;
 import java.util.Scanner;
 
 /**
- * Ponto de entrada e controlador do terminal do SGI.
- *
- * <p>A classe coordena o menu e encaminha as operações para o serviço. A
- * leitura, a formatação e as opções de configuração ficam em auxiliares para
- * manter a interação separada das regras de negócio.</p>
+ * Itens 8 e 9 — Ponto de entrada e menu CRUD interativo do SGI no terminal,
+ * integrado ao servidor de cotações (SELICRA, CDIR, USD e EUR).
  */
-public final class Principal {
-    /** Arquivo padrão usado para carregar e salvar o estado do sistema. */
+public final class Main {
+
     private static final Path ARQUIVO_PADRAO = Path.of("data", "sgi.db");
-
-    /** Quantidade de dias, contando o dia atual, do extrato padrão. */
     private static final int DIAS_EXTRATO_PADRAO = 30;
-
-    /** Maior número de porta TCP válido. */
+    private static final int PORTA_PADRAO_COTACOES = 5050;
     private static final int PORTA_MAXIMA = 65_535;
-
-    private static final String PROMPT_CLIENTE = "CPF/identificador do cliente: ";
-    private static final String PROMPT_APLICACAO = "Código da aplicação: ";
     private static final String FORMATO_DATA = "(AAAA-MM-DD): ";
 
     private final EntradaTerminal entrada;
-
-    /** Não é final porque a opção "Carregar estado" substitui a instância inteira. */
     private SGI sistema;
-
-    /**
-     * Indica se o estado deve ser gravado em {@link #ARQUIVO_PADRAO} ao sair.
-     *
-     * <p>Fica desligado quando o arquivo padrão existe mas não pôde ser lido,
-     * para não sobrescrevê-lo com um sistema vazio. Volta a ser ligado assim
-     * que o usuário salva explicitamente no arquivo padrão.</p>
-     */
     private boolean salvarAutomaticamenteAoSair;
 
-    private Principal(EntradaTerminal entrada, EstadoInicial estadoInicial) {
+    private Main(EntradaTerminal entrada, EstadoInicial estadoInicial) {
         this.entrada = entrada;
         this.sistema = estadoInicial.sistema();
         this.salvarAutomaticamenteAoSair = estadoInicial.salvarAutomaticamenteAoSair();
     }
 
-    /** Carrega o estado padrão e inicia a interface interativa. */
     public static void main(String[] args) {
         try (Scanner leitor = new Scanner(System.in)) {
-            new Principal(new EntradaTerminal(leitor), carregarEstadoPadrao()).executar();
+            new Main(new EntradaTerminal(leitor), carregarEstadoPadrao()).executar();
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Ciclo de vida
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Ciclo de vida e menu
+    // -------------------------------------------------------------------------
 
-    /** Usa o arquivo padrão quando disponível e protege dados que não puderam ser lidos. */
     private static EstadoInicial carregarEstadoPadrao() {
         if (!Files.exists(ARQUIVO_PADRAO)) {
             return new EstadoInicial(new SGI(), true);
         }
         try {
             System.out.println("Carregando estado de " + ARQUIVO_PADRAO + "...");
-            SGI carregado = MigradorSistemaInvestimentos.carregarComMigracao(ARQUIVO_PADRAO);
-            return new EstadoInicial(carregado, true);
+            return new EstadoInicial(MigradorSistemaInvestimentos.carregarComMigracao(ARQUIVO_PADRAO), true);
         } catch (IOException | RuntimeException e) {
             System.out.println("Não foi possível carregar " + ARQUIVO_PADRAO + ": "
                     + FormatadorTerminal.mensagemDe(e));
@@ -91,13 +70,12 @@ public final class Principal {
         }
     }
 
-    /** Mantém o menu ativo até a saída explícita ou o fim da entrada. */
     private void executar() {
         boolean emExecucao = true;
         while (emExecucao) {
             try {
                 exibirMenu();
-                emExecucao = processarOpcao(entrada.lerLinha("Escolha uma opção: "));
+                emExecucao = processarOpcao(entrada.lerLinha("Escolha uma opção: ").trim());
             } catch (EntradaTerminal.EndOfInputException e) {
                 emExecucao = false;
             } catch (RuntimeException e) {
@@ -107,34 +85,29 @@ public final class Principal {
         encerrar();
     }
 
-    /**
-     * Executa a ação associada à opção do menu.
-     *
-     * @return {@code false} quando o usuário pede para sair; {@code true} caso contrário
-     */
     private boolean processarOpcao(String opcao) {
         switch (opcao) {
             case "1" -> cadastrarCliente();
             case "2" -> listarClientes();
             case "3" -> consultarCliente();
-            case "4" -> cadastrarAplicacao();
-            case "5" -> listarAplicacoes();
-            case "6" -> lancarOperacao(TipoOperacao.DEPOSITO);
-            case "7" -> lancarOperacao(TipoOperacao.RETIRADA);
-            case "8" -> exibirExtrato();
-            case "9" -> exibirSaldoCliente();
-            case "10" -> exibirSaldoSistema();
-            case "11" -> atualizarAplicacoes();
-            case "12" -> carregarEstado();
-            case "13" -> salvarEstado();
-            case "14" -> exibirCotacoes();
-            case "15" -> listarClientesEAplicacoes();
-            case "16" -> alterarCliente();
-            case "17" -> excluirCliente();
-            case "18" -> alterarAplicacao();
-            case "19" -> excluirAplicacao();
-            case "20" -> alterarOperacao();
-            case "21" -> excluirOperacao();
+            case "4" -> alterarCliente();
+            case "5" -> excluirCliente();
+            case "6" -> listarClientesEAplicacoes();
+            case "7" -> cadastrarAplicacao();
+            case "8" -> listarAplicacoes();
+            case "9" -> alterarAplicacao();
+            case "10" -> excluirAplicacao();
+            case "11" -> lancarOperacao(TipoOperacao.DEPOSITO);
+            case "12" -> lancarOperacao(TipoOperacao.RETIRADA);
+            case "13" -> alterarOperacao();
+            case "14" -> excluirOperacao();
+            case "15" -> exibirExtrato();
+            case "16" -> exibirSaldoCliente();
+            case "17" -> exibirSaldoSistema();
+            case "18" -> atualizarAplicacoes();
+            case "19" -> consultarCotacoes();
+            case "20" -> carregarEstado();
+            case "21" -> salvarEstado();
             case "0" -> {
                 return false;
             }
@@ -143,7 +116,6 @@ public final class Principal {
         return true;
     }
 
-    /** Salva no arquivo padrão, quando permitido, e finaliza a sessão. */
     private void encerrar() {
         if (salvarAutomaticamenteAoSair) {
             salvarEm(ARQUIVO_PADRAO);
@@ -153,41 +125,48 @@ public final class Principal {
         System.out.println("SGI encerrado.");
     }
 
-    /** Mostra as operações disponíveis no terminal. */
     private void exibirMenu() {
+        String statusCotacoes = AuxiliarCotacoes.resumoStatus(sistema);
+        System.out.println();
+        System.out.println("===== Sistema de Gestão de Investimentos (SGI) =====");
+        if (!statusCotacoes.isEmpty()) {
+            System.out.println(statusCotacoes);
+        }
         System.out.println("""
-
-                ===== Sistema de Gestão de Investimentos =====
-                1. Cadastrar cliente
-                2. Listar clientes
-                3. Consultar cliente
-                4. Cadastrar aplicação
-                5. Listar aplicações de um cliente
-                6. Lançar depósito
-                7. Lançar retirada
-                8. Consultar extrato
-                9. Consultar saldo de cliente/aplicação
-                10. Consultar saldo total do sistema
-                11. Atualizar aplicações
-                12. Carregar estado de arquivo
-                13. Salvar estado em arquivo
-                14. Consultar cotações do servidor
-                15. Listar clientes e aplicações
-                16. Alterar dados de cliente
-                17. Excluir cliente e dados vinculados
-                18. Alterar nome ou taxa de aplicação
-                19. Excluir aplicação e operações vinculadas
-                20. Alterar operação financeira
-                21. Excluir operação financeira
-                0. Salvar e sair
+                [Clientes]
+                 1. Cadastrar cliente
+                 2. Listar clientes
+                 3. Consultar cliente
+                 4. Alterar dados de cliente
+                 5. Excluir cliente e dados vinculados
+                 6. Listar clientes e aplicações
+                [Aplicações]
+                 7. Cadastrar aplicação
+                 8. Listar aplicações de um cliente
+                 9. Alterar nome ou taxa de aplicação
+                10. Excluir aplicação e operações vinculadas
+                [Operações e Extrato]
+                11. Lançar depósito
+                12. Lançar retirada
+                13. Alterar operação financeira
+                14. Excluir operação financeira
+                15. Consultar extrato
+                [Saldos e Atualização]
+                16. Consultar saldo de cliente/aplicação
+                17. Consultar saldo total do sistema
+                18. Atualizar aplicações (dias úteis)
+                [Cotações e Arquivos]
+                19. Consultar e carregar cotações do servidor
+                20. Carregar estado de arquivo
+                21. Salvar estado em arquivo
+                 0. Salvar e sair
                 """);
     }
 
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Clientes
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
-    /** Cadastra os dados pessoais e bancários de um cliente. */
     private void cadastrarCliente() {
         String nome = entrada.lerObrigatorio("Nome completo: ");
         DADOSPESSOAIS dadosPessoais;
@@ -195,7 +174,7 @@ public final class Principal {
             String cpf = entrada.lerObrigatorio("CPF (será ocultado nas listagens): ");
             try {
                 dadosPessoais = new DADOSPESSOAIS(nome, cpf);
-            } catch (IllegalArgumentException excecao) {
+            } catch (IllegalArgumentException e) {
                 System.out.println("CPF inválido. Informe um CPF válido com 11 dígitos.");
                 continue;
             }
@@ -211,7 +190,7 @@ public final class Principal {
             try {
                 dadosPessoais.setCelular(celular);
                 break;
-            } catch (IllegalArgumentException excecao) {
+            } catch (IllegalArgumentException e) {
                 System.out.println("Celular inválido. Informe de 10 a 13 dígitos, incluindo o DDD.");
             }
         }
@@ -222,7 +201,6 @@ public final class Principal {
         System.out.println("Cliente cadastrado com sucesso.");
     }
 
-    /** Lista clientes sem revelar o CPF completo. */
     private void listarClientes() {
         List<Cliente> clientes = sistema.getClientes();
         if (clientes.isEmpty()) {
@@ -236,7 +214,6 @@ public final class Principal {
         }
     }
 
-    /** Lista cada cliente junto das aplicações que compõem sua carteira. */
     private void listarClientesEAplicacoes() {
         List<Cliente> clientes = sistema.getClientes();
         if (clientes.isEmpty()) {
@@ -246,131 +223,120 @@ public final class Principal {
         for (Cliente cliente : clientes) {
             DADOSPESSOAIS dados = cliente.getDadosPessoais();
             System.out.printf("%s | CPF: %s | Agência/conta: %d/%d%n",
-                    dados.getNome(),
-                    FormatadorTerminal.mascararCpf(dados.getCpf()),
-                    cliente.getNumeroAgencia(),
-                    cliente.getNumeroConta());
+                    dados.getNome(), FormatadorTerminal.mascararCpf(dados.getCpf()),
+                    cliente.getNumeroAgencia(), cliente.getNumeroConta());
             List<MultiplasOperacoesFinanceiras> aplicacoes = cliente.getAplicacoes();
             if (aplicacoes.isEmpty()) {
                 System.out.println("  (sem aplicações cadastradas)");
                 continue;
             }
             for (MultiplasOperacoesFinanceiras carteira : aplicacoes) {
-                AplicacaoFinanceira aplicacao = carteira.getAplicacao();
+                AplicacaoFinanceira app = carteira.getAplicacao();
                 System.out.printf("  - %s | número: %s | saldo: %s%n",
-                        aplicacao.getNomeAplicacao(),
-                        aplicacao.getNumeroAplicacao(),
-                        FormatadorTerminal.formatarMoeda(carteira.getSaldoLiquido()));
+                        app.getNomeAplicacao(), app.getNumeroAplicacao(),
+                        FormatadorTerminal.formatarMoeda(carteira.getSaldo()));
             }
         }
     }
 
-    /** Altera o nome e o celular do cliente, preservando o CPF como identificador. */
-    private void alterarCliente() {
-        String cpf = lerIdentificadorCliente();
-        Cliente cliente = sistema.buscarCliente(cpf)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado."));
-        String nome = entrada.lerObrigatorio("Novo nome completo: ");
-        String celular = entrada.lerObrigatorio("Novo celular (com DDD): ");
-        sistema.alterarCliente(cpf, nome, celular);
-        System.out.println("Dados do cliente " + FormatadorTerminal.mascararCpf(cliente.getDadosPessoais().getCpf())
-                + " atualizados com sucesso.");
-    }
-
-    /** Exclui o cliente e a carteira inteira após confirmação explícita. */
-    private void excluirCliente() {
-        String cpf = lerIdentificadorCliente();
-        Cliente cliente = sistema.buscarCliente(cpf)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado."));
-        if (!entrada.lerSimNao("Excluir cliente e todas as aplicações vinculadas? (s/n): ")) {
-            System.out.println("Exclusão cancelada.");
-            return;
-        }
-        sistema.excluirCliente(cpf);
-        System.out.println("Cliente " + FormatadorTerminal.mascararCpf(cliente.getDadosPessoais().getCpf())
-                + " e seus dados vinculados foram excluídos.");
-    }
-
-    /** Consulta os dados cadastrais e o saldo consolidado de um cliente. */
     private void consultarCliente() {
-        String identificadorCliente = lerIdentificadorCliente();
-        Optional<Cliente> resultado = sistema.buscarCliente(identificadorCliente);
+        String cpf = lerCpfCliente();
+        Optional<Cliente> resultado = sistema.buscarCliente(cpf);
         if (resultado.isEmpty()) {
             System.out.println("Cliente não encontrado.");
             return;
         }
         Cliente cliente = resultado.get();
         DADOSPESSOAIS dados = cliente.getDadosPessoais();
-        BigDecimal saldoTotal = sistema.getSaldo(identificadorCliente);
+        BigDecimal saldoTotal = sistema.getSaldo(cpf);
 
         System.out.println("Cliente: " + dados.getNome());
         System.out.println("CPF/identificador: " + FormatadorTerminal.mascararCpf(dados.getCpf()));
         System.out.println("Agência/conta: " + cliente.getNumeroAgencia() + "/" + cliente.getNumeroConta());
         System.out.println("Celular: " + dados.getCelular());
         System.out.println("Saldo total: " + FormatadorTerminal.formatarMoeda(saldoTotal));
+        AuxiliarCotacoes.exibirEquivalenteCambial(saldoTotal, sistema);
     }
 
-    // ---------------------------------------------------------------------
-    // Aplicações e operações
-    // ---------------------------------------------------------------------
+    private void alterarCliente() {
+        String cpf = lerCpfCliente();
+        Cliente cliente = sistema.requererCliente(cpf);
+        String nome = entrada.lerObrigatorio("Novo nome completo: ");
+        String celular = entrada.lerObrigatorio("Novo celular (com DDD): ");
+        sistema.alterarCliente(cpf, nome, celular);
+        System.out.println("Dados do cliente "
+                + FormatadorTerminal.mascararCpf(cliente.getDadosPessoais().getCpf())
+                + " atualizados com sucesso.");
+    }
 
-    /** Cadastra uma aplicação com termos padrão ou personalizados. */
+    private void excluirCliente() {
+        String cpf = lerCpfCliente();
+        Cliente cliente = sistema.requererCliente(cpf);
+        if (!entrada.lerSimNao("Excluir cliente e todas as aplicações vinculadas? (s/n): ")) {
+            System.out.println("Exclusão cancelada.");
+            return;
+        }
+        sistema.excluirCliente(cpf);
+        System.out.println("Cliente "
+                + FormatadorTerminal.mascararCpf(cliente.getDadosPessoais().getCpf())
+                + " e seus dados vinculados foram excluídos.");
+    }
+
+    // -------------------------------------------------------------------------
+    // Aplicações
+    // -------------------------------------------------------------------------
+
     private void cadastrarAplicacao() {
-        String identificadorCliente = lerIdentificadorCliente();
+        String cpf = lerCpfCliente();
         String nome = entrada.lerObrigatorio("Nome da aplicação: ");
         String numero = entrada.lerObrigatorio("Número da aplicação: ");
-        BigDecimal valorInicial = entrada.lerValorPositivo("Valor inicial: ");
-        BigDecimal taxaMensal = entrada.lerTaxaMensal();
+        BigDecimal valorInicial = AuxiliarCotacoes.lerValorEmReal(entrada, sistema, "Valor inicial: ");
+        BigDecimal taxaMensal = AuxiliarCotacoes.lerTaxaMensal(entrada, sistema);
         AplicacaoFinanceira aplicacao = new AplicacaoFinanceira(nome, numero, valorInicial, taxaMensal);
 
         if (entrada.lerSimNao("Usar configuração padrão da aplicação? (s/n): ")) {
             System.out.println("""
-                    Configuração padrão da aplicação:
+                    Configuração padrão:
                     - rendimento diário; sem vencimento e sem permanência mínima;
-                    - resgate diário;
-                    - IOF de 3,5% nos primeiros 29 dias; IR regressivo.
+                    - resgate diário; IOF de 3,5% nos primeiros 29 dias; IR regressivo.
                     """);
         } else {
             TermosInvestimento.configurar(aplicacao, entrada);
         }
-        sistema.cadastrarAplicacao(identificadorCliente, aplicacao);
+        sistema.cadastrarAplicacao(cpf, aplicacao);
         System.out.println("Aplicação cadastrada com sucesso.");
     }
 
-    /** Lista os dados principais das aplicações de um cliente. */
     private void listarAplicacoes() {
-        String identificadorCliente = lerIdentificadorCliente();
-        List<MultiplasOperacoesFinanceiras> aplicacoes = sistema.getAplicacoes(identificadorCliente);
+        String cpf = lerCpfCliente();
+        List<MultiplasOperacoesFinanceiras> aplicacoes = sistema.getAplicacoes(cpf);
         if (aplicacoes.isEmpty()) {
             System.out.println("O cliente não possui aplicações cadastradas.");
             return;
         }
-        System.out.println("Aplicações de " + FormatadorTerminal.mascararCpf(identificadorCliente) + ":");
+        System.out.println("Aplicações de " + FormatadorTerminal.mascararCpf(cpf) + ":");
         for (MultiplasOperacoesFinanceiras carteira : aplicacoes) {
-            AplicacaoFinanceira aplicacao = carteira.getAplicacao();
+            AplicacaoFinanceira app = carteira.getAplicacao();
             System.out.printf("- %s | número: %s | saldo: %s | aporte inicial: %s | taxa mensal: %s%n",
-                    aplicacao.getNomeAplicacao(),
-                    aplicacao.getNumeroAplicacao(),
+                    app.getNomeAplicacao(), app.getNumeroAplicacao(),
                     FormatadorTerminal.formatarMoeda(carteira.getSaldo()),
-                    FormatadorTerminal.formatarMoeda(aplicacao.getValorAplicado()),
-                    aplicacao.getTaxaMensal());
+                    FormatadorTerminal.formatarMoeda(app.getValorAplicado()),
+                    app.getTaxaMensal());
         }
     }
 
-    /** Altera os campos descritivos de uma aplicação sem apagar seu histórico. */
     private void alterarAplicacao() {
-        String cpf = lerIdentificadorCliente();
-        String numero = lerIdentificadorAplicacao();
+        String cpf = lerCpfCliente();
+        String numero = lerCodigoAplicacao();
         String nome = entrada.lerObrigatorio("Novo nome da aplicação: ");
-        BigDecimal taxaMensal = entrada.lerTaxaMensal();
+        BigDecimal taxaMensal = AuxiliarCotacoes.lerTaxaMensal(entrada, sistema);
         sistema.alterarAplicacao(cpf, numero, nome, taxaMensal);
         System.out.println("Aplicação atualizada com sucesso.");
     }
 
-    /** Exclui uma aplicação e todos os lançamentos associados após confirmação. */
     private void excluirAplicacao() {
-        String cpf = lerIdentificadorCliente();
-        String numero = lerIdentificadorAplicacao();
+        String cpf = lerCpfCliente();
+        String numero = lerCodigoAplicacao();
         if (!entrada.lerSimNao("Excluir a aplicação e todas as operações vinculadas? (s/n): ")) {
             System.out.println("Exclusão cancelada.");
             return;
@@ -379,47 +345,45 @@ public final class Principal {
         System.out.println("Aplicação e operações vinculadas excluídas.");
     }
 
-    /** Exibe os lançamentos disponíveis e retorna o índice escolhido pelo usuário. */
-    private int selecionarOperacao(String cpf, String numeroAplicacao) {
-        List<OperacaoFinanceira> operacoes =
-                sistema.requererCliente(cpf).requererAplicacao(numeroAplicacao).getOperacoes();
-        if (operacoes.isEmpty()) {
-            System.out.println("A aplicação não possui operações cadastradas.");
-            return -1;
-        }
-        for (int indice = 0; indice < operacoes.size(); indice++) {
-            OperacaoFinanceira operacao = operacoes.get(indice);
-            System.out.printf("%d. %s | %s | %s | %s%n",
-                    indice + 1,
-                    operacao.getData(),
-                    operacao.getTipo().getDescricao(),
-                    FormatadorTerminal.formatarMoeda(operacao.getValor()),
-                    operacao.getDescricao());
-        }
-        return entrada.lerInteiro("Número da operação: ", 1, operacoes.size()) - 1;
+    // -------------------------------------------------------------------------
+    // Operações e Extrato
+    // -------------------------------------------------------------------------
+
+    private void lancarOperacao(TipoOperacao tipo) {
+        String cpf = lerCpfCliente();
+        String numero = lerCodigoAplicacao();
+        LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
+        BigDecimal valor = AuxiliarCotacoes.lerValorEmReal(entrada, sistema, "Valor: ");
+        String descricao = entrada.lerObrigatorio("Descrição: ");
+
+        sistema.cadastrarOperacao(cpf, numero, new OperacaoFinanceira(data, valor, descricao, tipo));
+        System.out.println(tipo == TipoOperacao.DEPOSITO
+                ? "Depósito lançado com sucesso."
+                : "Retirada lançada com sucesso.");
     }
 
-    /** Substitui um lançamento e atualiza o saldo de forma transacional. */
     private void alterarOperacao() {
-        String cpf = lerIdentificadorCliente();
-        String numero = lerIdentificadorAplicacao();
+        String cpf = lerCpfCliente();
+        String numero = lerCodigoAplicacao();
         int indice = selecionarOperacao(cpf, numero);
-        if (indice < 0) {
-            return;
-        }
-        OperacaoFinanceira novaOperacao = lerOperacao();
-        sistema.alterarOperacao(cpf, numero, indice, novaOperacao);
+        if (indice < 0) return;
+
+        LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
+        BigDecimal valor = AuxiliarCotacoes.lerValorEmReal(entrada, sistema, "Valor: ");
+        String descricao = entrada.lerObrigatorio("Descrição: ");
+        int tipoOp = entrada.lerInteiro("Tipo (1 = depósito, 2 = retirada): ", 1, 2);
+        TipoOperacao tipo = tipoOp == 1 ? TipoOperacao.DEPOSITO : TipoOperacao.RETIRADA;
+
+        sistema.alterarOperacao(cpf, numero, indice, new OperacaoFinanceira(data, valor, descricao, tipo));
         System.out.println("Operação atualizada com sucesso.");
     }
 
-    /** Remove um lançamento e reverte seu efeito financeiro após confirmação. */
     private void excluirOperacao() {
-        String cpf = lerIdentificadorCliente();
-        String numero = lerIdentificadorAplicacao();
+        String cpf = lerCpfCliente();
+        String numero = lerCodigoAplicacao();
         int indice = selecionarOperacao(cpf, numero);
-        if (indice < 0) {
-            return;
-        }
+        if (indice < 0) return;
+
         if (!entrada.lerSimNao("Excluir a operação selecionada e reverter seu efeito no saldo? (s/n): ")) {
             System.out.println("Exclusão cancelada.");
             return;
@@ -428,44 +392,30 @@ public final class Principal {
         System.out.println("Operação excluída e saldo ajustado com sucesso.");
     }
 
-    /** Lê os dados validados de um depósito ou retirada. */
-    private OperacaoFinanceira lerOperacao() {
-        LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
-        BigDecimal valor = entrada.lerValorPositivo("Valor: ");
-        String descricao = entrada.lerObrigatorio("Descrição: ");
-        int opcaoTipo = entrada.lerInteiro("Tipo (1 = depósito, 2 = retirada): ", 1, 2);
-        TipoOperacao tipo = opcaoTipo == 1 ? TipoOperacao.DEPOSITO : TipoOperacao.RETIRADA;
-        return new OperacaoFinanceira(data, valor, descricao, tipo);
+    private int selecionarOperacao(String cpf, String numeroAplicacao) {
+        List<OperacaoFinanceira> operacoes =
+                sistema.requererCliente(cpf).requererAplicacao(numeroAplicacao).getOperacoes();
+        if (operacoes.isEmpty()) {
+            System.out.println("A aplicação não possui operações cadastradas.");
+            return -1;
+        }
+        for (int i = 0; i < operacoes.size(); i++) {
+            OperacaoFinanceira op = operacoes.get(i);
+            System.out.printf("%d. %s | %s | %s | %s%n",
+                    i + 1, op.getData(), op.getTipo().getDescricao(),
+                    FormatadorTerminal.formatarMoeda(op.getValor()), op.getDescricao());
+        }
+        return entrada.lerInteiro("Número da operação: ", 1, operacoes.size()) - 1;
     }
 
-    /** Registra um depósito ou uma retirada na aplicação indicada. */
-    private void lancarOperacao(TipoOperacao tipo) {
-        String identificadorCliente = lerIdentificadorCliente();
-        String identificadorAplicacao = lerIdentificadorAplicacao();
-        LocalDate data = entrada.lerData("Data da operação " + FORMATO_DATA);
-        BigDecimal valor = entrada.lerValorPositivo("Valor: ");
-        String descricao = entrada.lerObrigatorio("Descrição: ");
-
-        OperacaoFinanceira operacao = new OperacaoFinanceira(data, valor, descricao, tipo);
-        sistema.cadastrarOperacao(identificadorCliente, identificadorAplicacao, operacao);
-
-        String mensagemSucesso = switch (tipo) {
-            case DEPOSITO -> "Depósito lançado com sucesso.";
-            case RETIRADA -> "Retirada lançada com sucesso.";
-        };
-        System.out.println(mensagemSucesso);
-    }
-
-    /** Exibe o extrato no período escolhido ou nos últimos {@value #DIAS_EXTRATO_PADRAO} dias. */
     private void exibirExtrato() {
-        String identificadorCliente = lerIdentificadorCliente();
-        String identificadorAplicacao = lerIdentificadorAplicacao();
+        String cpf = lerCpfCliente();
+        String numero = entrada.lerLinha("Código da aplicação (vazio para extrato consolidado do cliente): ").trim();
 
         LocalDate dataInicial;
         LocalDate dataFinal;
         if (entrada.lerSimNao("Usar os últimos " + DIAS_EXTRATO_PADRAO + " dias? (s/n): ")) {
             dataFinal = LocalDate.now();
-            // O dia atual já conta como um dos dias do período.
             dataInicial = dataFinal.minusDays(DIAS_EXTRATO_PADRAO - 1L);
         } else {
             dataInicial = entrada.lerData("Data inicial " + FORMATO_DATA);
@@ -476,86 +426,93 @@ public final class Principal {
             return;
         }
 
-        List<OperacaoFinanceira> operacoes =
-                sistema.getExtrato(identificadorCliente, identificadorAplicacao, dataInicial, dataFinal);
+        List<OperacaoFinanceira> operacoes = numero.isEmpty()
+                ? sistema.getExtrato(cpf, dataInicial, dataFinal)
+                : sistema.getExtrato(cpf, numero, dataInicial, dataFinal);
         if (operacoes.isEmpty()) {
             System.out.println("Não há operações no período informado.");
             return;
         }
-        System.out.printf("Extrato de %s, de %s a %s:%n",
-                FormatadorTerminal.mascararCpf(identificadorCliente), dataInicial, dataFinal);
-        for (OperacaoFinanceira operacao : operacoes) {
+        System.out.printf("Extrato de %s (%s), de %s a %s:%n",
+                FormatadorTerminal.mascararCpf(cpf),
+                numero.isEmpty() ? "consolidado" : "aplicação " + numero,
+                dataInicial, dataFinal);
+        for (OperacaoFinanceira op : operacoes) {
             System.out.printf("- %s | %s | %s | %s%n",
-                    operacao.getData(),
-                    operacao.getTipo().getDescricao(),
-                    FormatadorTerminal.formatarMoeda(operacao.getValor()),
-                    operacao.getDescricao());
+                    op.getData(), op.getTipo().getDescricao(),
+                    FormatadorTerminal.formatarMoeda(op.getValor()), op.getDescricao());
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Saldos e atualização
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Saldos e Atualização
+    // -------------------------------------------------------------------------
 
-    /** Consulta o saldo da aplicação escolhida ou, se nenhuma for informada, o total do cliente. */
     private void exibirSaldoCliente() {
-        String identificadorCliente = lerIdentificadorCliente();
-        String identificadorAplicacao =
-                entrada.lerLinha("Código da aplicação (vazio para saldo total do cliente): ").trim();
-
-        BigDecimal saldo = identificadorAplicacao.isEmpty()
-                ? sistema.getSaldo(identificadorCliente)
-                : sistema.getSaldo(identificadorCliente, identificadorAplicacao);
+        String cpf = lerCpfCliente();
+        String numero = entrada.lerLinha("Código da aplicação (vazio para saldo total do cliente): ").trim();
+        BigDecimal saldo = numero.isEmpty() ? sistema.getSaldo(cpf) : sistema.getSaldo(cpf, numero);
         System.out.println("Saldo: " + FormatadorTerminal.formatarMoeda(saldo));
+        AuxiliarCotacoes.exibirEquivalenteCambial(saldo, sistema);
     }
 
-    /** Consulta o saldo líquido total do sistema. */
     private void exibirSaldoSistema() {
-        System.out.println("Saldo total do sistema: " + FormatadorTerminal.formatarMoeda(sistema.getSaldo()));
+        BigDecimal saldo = sistema.getSaldo();
+        System.out.println("Saldo total do sistema: " + FormatadorTerminal.formatarMoeda(saldo));
+        AuxiliarCotacoes.exibirEquivalenteCambial(saldo, sistema);
     }
 
-    /**
-     * Atualiza as aplicações para a data informada.
-     *
-     * <p>O serviço ignora silenciosamente datas de fim de semana; a mensagem
-     * exibida aqui apenas reflete essa regra para o usuário.</p>
-     */
     private void atualizarAplicacoes() {
         LocalDate data = entrada.lerData("Data de atualização " + FORMATO_DATA);
-        sistema.atualizarAplicacoes(data);
-        if (ehFimDeSemana(data)) {
+        sistema.atualizarAplicacao(data);
+        if (!new DiaSemana(data).ehDiaUtil()) {
             System.out.println("A data informada é fim de semana; o serviço não processou a atualização.");
         } else {
             System.out.println("Aplicações atualizadas com sucesso.");
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Persistência
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Cotações e Persistência
+    // -------------------------------------------------------------------------
 
-    /** Carrega um estado e só substitui o atual depois de uma leitura bem-sucedida. */
+    private void consultarCotacoes() {
+        String host = entrada.lerLinhaComPadrao("Servidor de cotações [localhost]: ", "localhost");
+        int porta = entrada.lerInteiroComPadrao(
+                "Porta [" + PORTA_PADRAO_COTACOES + "]: ", 1, PORTA_MAXIMA, PORTA_PADRAO_COTACOES);
+        try {
+            Map<String, BigDecimal> cotacoes = new ClienteCotacoes(host, porta).obterCotacoes();
+            if (cotacoes.isEmpty()) {
+                System.out.println("O servidor não disponibilizou cotações.");
+                return;
+            }
+            sistema.atualizarCotacoes(cotacoes);
+            AuxiliarCotacoes.exibirCotacoes(cotacoes);
+            System.out.println("As taxas SELICRA/CDIR e o câmbio USD/EUR já podem ser usados nas operações.");
+        } catch (IOException | RuntimeException e) {
+            System.out.println("Falha ao consultar o servidor de cotações: " + FormatadorTerminal.mensagemDe(e));
+        }
+    }
+
     private void carregarEstado() {
         Path caminho = entrada.lerCaminho("Caminho do arquivo para carregar: ");
         try {
-            sistema = MigradorSistemaInvestimentos.carregarComMigracao(caminho);
+            Map<String, BigDecimal> cotacoesSessao = sistema.getCotacoes();
+            SGI carregado = MigradorSistemaInvestimentos.carregarComMigracao(caminho);
+            if (!cotacoesSessao.isEmpty()) {
+                carregado.atualizarCotacoes(cotacoesSessao);
+            }
+            sistema = carregado;
             System.out.println("Estado carregado com sucesso de " + caminho + ".");
         } catch (IOException | RuntimeException e) {
             System.out.println("Falha ao carregar " + caminho + ": " + FormatadorTerminal.mensagemDe(e));
         }
     }
 
-    /** Salva o estado no caminho solicitado. */
     private void salvarEstado() {
         salvarEm(entrada.lerCaminho("Caminho do arquivo para salvar: "));
     }
 
-    /**
-     * Grava o estado em {@code caminho}, criando a pasta pai se necessário.
-     *
-     * <p>Um salvamento bem-sucedido no arquivo padrão reativa o salvamento
-     * automático, pois o conteúdo dele passa a ser o estado atual.</p>
-     */
     private void salvarEm(Path caminho) {
         try {
             Path pastaPai = caminho.toAbsolutePath().getParent();
@@ -572,56 +529,17 @@ public final class Principal {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Cotações
-    // ---------------------------------------------------------------------
-
-    /** Consulta e exibe as cotações disponíveis no servidor TCP. */
-    private void exibirCotacoes() {
-        String host = entrada.lerObrigatorio("Servidor de cotações (host): ");
-        int porta = entrada.lerInteiro("Porta: ", 1, PORTA_MAXIMA);
-        try {
-            Map<String, BigDecimal> cotacoes = new ClienteCotacoes(host, porta).obterCotacoes();
-            if (cotacoes.isEmpty()) {
-                System.out.println("O servidor não disponibilizou cotações.");
-                return;
-            }
-            System.out.println("Cotações disponíveis no servidor:");
-            for (Map.Entry<String, BigDecimal> cotacao : cotacoes.entrySet()) {
-                System.out.printf("- %s: %s%n", cotacao.getKey(), FormatadorTerminal.formatarMoeda(cotacao.getValue()));
-            }
-        } catch (IOException | RuntimeException e) {
-            System.out.println("Falha ao consultar o servidor de cotações: " + FormatadorTerminal.mensagemDe(e));
-        }
+    private String lerCpfCliente() {
+        return entrada.lerObrigatorio("CPF/identificador do cliente: ");
     }
 
-    // ---------------------------------------------------------------------
-    // Auxiliares
-    // ---------------------------------------------------------------------
-
-    private String lerIdentificadorCliente() {
-        return entrada.lerObrigatorio(PROMPT_CLIENTE);
+    private String lerCodigoAplicacao() {
+        return entrada.lerObrigatorio("Código da aplicação: ");
     }
 
-    private String lerIdentificadorAplicacao() {
-        return entrada.lerObrigatorio(PROMPT_APLICACAO);
-    }
-
-    private static boolean ehFimDeSemana(LocalDate data) {
-        DayOfWeek dia = data.getDayOfWeek();
-        return dia == DayOfWeek.SATURDAY || dia == DayOfWeek.SUNDAY;
-    }
-
-    /** Compara caminhos já normalizados para reconhecer variações como {@code ./data/sgi.db}. */
     private static boolean ehArquivoPadrao(Path caminho) {
         return caminho.toAbsolutePath().normalize().equals(ARQUIVO_PADRAO.toAbsolutePath().normalize());
     }
 
-    /**
-     * Estado com que a aplicação é iniciada.
-     *
-     * @param sistema                     sistema carregado do disco ou recém-criado
-     * @param salvarAutomaticamenteAoSair se é seguro sobrescrever o arquivo padrão ao sair
-     */
     private record EstadoInicial(SGI sistema, boolean salvarAutomaticamenteAoSair) { }
 }

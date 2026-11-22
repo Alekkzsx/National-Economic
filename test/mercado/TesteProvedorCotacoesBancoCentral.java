@@ -1,16 +1,17 @@
 package mercado;
 
+import static test.Afirmacao.*;
+
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Map;
 
-/**
- * Verifica a leitura dos campos da resposta PTAX sem depender de acesso à rede.
- */
+/** Verifica o parser da resposta PTAX do Banco Central sem depender de rede externa. */
 public final class TesteProvedorCotacoesBancoCentral {
-    private TesteProvedorCotacoesBancoCentral() {}
 
-    /** Executa verificações determinísticas do parser do serviço do Banco Central. */
+    private TesteProvedorCotacoesBancoCentral() {
+    }
+
     public static void main(String[] args) throws Exception {
         String respostaDolar = """
                 {"value":[
@@ -19,7 +20,7 @@ public final class TesteProvedorCotacoesBancoCentral {
                 ]}
                 """;
         BigDecimal dolar = ProvedorCotacoesBancoCentral.interpretarCotacaoMaisRecente(respostaDolar, false);
-        verificar(dolar.compareTo(new BigDecimal("5.18")) == 0,
+        afirmarIgual(new BigDecimal("5.18"), dolar,
                 "o dólar deve usar a observação com data e hora mais recentes");
 
         String respostaEuro = """
@@ -29,20 +30,20 @@ public final class TesteProvedorCotacoesBancoCentral {
                 ]}
                 """;
         BigDecimal euro = ProvedorCotacoesBancoCentral.interpretarCotacaoMaisRecente(respostaEuro, true);
-        verificar(euro.compareTo(new BigDecimal("6.14")) == 0,
+        afirmarIgual(new BigDecimal("6.14"), euro,
                 "o euro deve ignorar boletins intermediários e selecionar o fechamento");
 
-        boolean respostaVaziaRejeitada = false;
-        try {
-            ProvedorCotacoesBancoCentral.interpretarCotacaoMaisRecente("{\"value\":[]}", false);
-        } catch (IOException esperada) {
-            respostaVaziaRejeitada = true;
-        }
-        verificar(respostaVaziaRejeitada, "uma resposta sem cotação deve gerar erro explícito");
+        afirmarRejeicao(() -> {
+            try {
+                ProvedorCotacoesBancoCentral.interpretarCotacaoMaisRecente("{\"value\":[]}", false);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }, RuntimeException.class, "uma resposta sem cotação deve gerar erro explícito");
 
         Map<String, BigDecimal> cotacoesServidor = Map.of(
                 "SELICRA", new BigDecimal("10.50"),
-                "CDIR", new BigDecimal("1.25"),
+                "CDIR", new BigDecimal("10.40"),
                 "USD", new BigDecimal("5.18"),
                 "EUR", new BigDecimal("6.14")
         );
@@ -50,14 +51,8 @@ public final class TesteProvedorCotacoesBancoCentral {
             servidor.start();
             Map<String, BigDecimal> recebidas =
                     new ClienteCotacoes("127.0.0.1", servidor.getPorta()).obterCotacoes();
-            verificar(recebidas.equals(cotacoesServidor),
+            afirmarIgual(cotacoesServidor, recebidas,
                     "o protocolo TCP deve entregar todas as taxas e cotações configuradas");
-        }
-    }
-
-    private static void verificar(boolean condicao, String mensagem) {
-        if (!condicao) {
-            throw new AssertionError(mensagem);
         }
     }
 }

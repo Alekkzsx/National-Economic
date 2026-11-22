@@ -47,6 +47,8 @@ public final class TesteMultiplasOperacoes {
         testarPersistenciaArquivoSalvarELerDados(); testesExecutados++;
         testarPersistenciaPreservaCicloDeRendimento(); testesExecutados++;
         testarHerancaSeguraESobrescritaToString(); testesExecutados++;
+        testarSetCadastroESetOperacoesEAlteracao(); testesExecutados++;
+        testarPersistenciaEscapeEspecialECorrupcao(); testesExecutados++;
 
         long duracao = System.currentTimeMillis() - inicio;
         System.out.printf(">>> TesteMultiplasOperacoes CONCLUÍDO com SUCESSO: %d métodos verificados (%d ms)%n%n",
@@ -315,8 +317,9 @@ public final class TesteMultiplasOperacoes {
         mof.adicionarOperacao(new OperacaoFinanceira(dataInicio, new BigDecimal("250.00"), "Aporte #1", TipoOperacao.DEPOSITO));
         mof.adicionarOperacao(new OperacaoFinanceira(dataInicio.plusDays(1), new BigDecimal("50.00"), "Resgate #1", TipoOperacao.RETIRADA));
 
-        Path tempFile = Path.of("data/teste_mof_temp.db");
+        Path tempFile = null;
         try {
+            tempFile = Files.createTempFile("teste_mof_", ".db");
             mof.arquivoSalvarDados(tempFile);
             afirmarVerdadeiro(Files.exists(tempFile), "arquivo de persistência foi gravado");
 
@@ -329,9 +332,11 @@ public final class TesteMultiplasOperacoes {
         } catch (IOException e) {
             throw new AssertionError("Falha na persistência de arquivo: " + e.getMessage(), e);
         } finally {
-            try {
-                Files.deleteIfExists(tempFile);
-            } catch (IOException ignored) {}
+            if (tempFile != null) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException ignored) {}
+            }
         }
 
     }
@@ -349,8 +354,9 @@ public final class TesteMultiplasOperacoes {
         MultiplasOperacoesFinanceiras original = new MultiplasOperacoesFinanceiras(aplicacao);
         original.atualizarAplicacao(inicio.plusDays(3));
 
-        Path arquivo = Path.of("data/teste_mof_ciclo_temp.db");
+        Path arquivo = null;
         try {
+            arquivo = Files.createTempFile("teste_mof_ciclo_", ".db");
             original.arquivoSalvarDados(arquivo);
             MultiplasOperacoesFinanceiras restaurada =
                     MultiplasOperacoesFinanceiras.arquivoLerDados(arquivo);
@@ -381,10 +387,12 @@ public final class TesteMultiplasOperacoes {
         } catch (IOException excecao) {
             throw new AssertionError("Falha ao validar a restauração do ciclo de rendimento.", excecao);
         } finally {
-            try {
-                Files.deleteIfExists(arquivo);
-            } catch (IOException excecao) {
-                throw new AssertionError("Falha ao remover o arquivo de teste.", excecao);
+            if (arquivo != null) {
+                try {
+                    Files.deleteIfExists(arquivo);
+                } catch (IOException excecao) {
+                    throw new AssertionError("Falha ao remover o arquivo de teste.", excecao);
+                }
             }
         }
     }
@@ -398,6 +406,10 @@ public final class TesteMultiplasOperacoes {
             SubMultiplasOperacoes(AplicacaoFinanceira a) {
                 super(a);
             }
+            @Override
+            public void setCadastro(AplicacaoFinanceira app) {
+                throw new AssertionError("Construtor não pode invocar setCadastro sobrescrevível!");
+            }
         }
 
         SubMultiplasOperacoes sub = new SubMultiplasOperacoes(terminal);
@@ -406,5 +418,70 @@ public final class TesteMultiplasOperacoes {
         String str = sub.toString();
         afirmarVerdadeiro(str.contains("APP-101"), "toString contém o identificador da aplicação");
         afirmarVerdadeiro(str.contains("operacoes="), "toString contém contagem de operações");
+    }
+
+    public static void testarSetCadastroESetOperacoesEAlteracao() {
+        LocalDate data = LocalDate.of(2026, 8, 3);
+        MultiplasOperacoesFinanceiras mof = new MultiplasOperacoesFinanceiras(criarAplicacaoPadrao(data));
+        mof.adicionarOperacao(new OperacaoFinanceira(data, new BigDecimal("200.00"), "Inicial", TipoOperacao.DEPOSITO));
+
+        // setCadastro substitui aplicação e limpa operações atomicamente
+        AplicacaoFinanceira nova = new AplicacaoFinanceira(
+                "Tesouro Novo", "APP-999", new BigDecimal("500.00"), new BigDecimal("0.01"), data);
+        mof.setCadastro(nova, new DiaSemana(data));
+        afirmarIgual("APP-999", mof.getNumeroAplicacao(), "setCadastro atualizou aplicação");
+        afirmarIgual(0, mof.getQuantidadeOperacoes(), "setCadastro reinicia histórico");
+        afirmarRejeicao(() -> mof.setCadastro(null), IllegalArgumentException.class, "setCadastro(null) rejeitado");
+        afirmarIgual("APP-999", mof.getNumeroAplicacao(), "falha preserva estado");
+
+        // setOperacoes substitui estruturalmente com validação
+        OperacaoFinanceira op1 = new OperacaoFinanceira(data, new BigDecimal("100.00"), "Op 1", TipoOperacao.DEPOSITO);
+        mof.setOperacoes(List.of(op1));
+        afirmarIgual(1, mof.getQuantidadeOperacoes(), "setOperacoes atualizou lista");
+        afirmarRejeicao(() -> mof.setOperacoes(null), IllegalArgumentException.class, "setOperacoes(null) rejeitado");
+
+        // alterarOperacao (substituição e exclusão com null)
+        mof.alterarOperacao(0, new OperacaoFinanceira(data, new BigDecimal("150.00"), "Op 1 editada", TipoOperacao.DEPOSITO));
+        afirmarIgual(new BigDecimal("650.00"), mof.getSaldo(), "alterarOperacao recalculou saldo");
+        mof.alterarOperacao(0, null);
+        afirmarIgual(new BigDecimal("500.00"), mof.getSaldo(), "excluir via null reverte saldo");
+
+        // Sobrecarga inteira de atualizarAplicacao (dia útil)
+        mof.atualizarAplicacao(4, 8, 2026);
+        afirmarVerdadeiro(mof.getSaldoBruto().compareTo(new BigDecimal("500.00")) > 0, "atualizou via inteiros");
+    }
+
+    public static void testarPersistenciaEscapeEspecialECorrupcao() {
+        LocalDate data = LocalDate.of(2026, 8, 3);
+        MultiplasOperacoesFinanceiras mof = new MultiplasOperacoesFinanceiras(criarAplicacaoPadrao(data));
+        String descEspecial = "Aporte\tcom\\barra\ne quebra\r💰";
+        mof.adicionarOperacao(new OperacaoFinanceira(data, new BigDecimal("50.00"), descEspecial, TipoOperacao.DEPOSITO));
+
+        Path arquivo = null;
+        try {
+            arquivo = Files.createTempFile("teste_mof_escape_", ".db");
+            mof.arquivoSalvarDados(arquivo);
+            MultiplasOperacoesFinanceiras restaurado = MultiplasOperacoesFinanceiras.arquivoLerDados(arquivo);
+            afirmarIgual(descEspecial, restaurado.getOperacoes().getFirst().getDescricao(),
+                    "escape/desescape preserva tab, barra, quebra e emoji");
+
+            Files.writeString(arquivo, "CABECALHO_INVALIDO\t9\n");
+            Path ref = arquivo;
+            afirmarRejeicao(() -> {
+                try {
+                    MultiplasOperacoesFinanceiras.arquivoLerDados(ref);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }, RuntimeException.class, "cabeçalho inválido rejeitado");
+        } catch (IOException e) {
+            throw new AssertionError("Erro no teste de escape MOF: " + e.getMessage(), e);
+        } finally {
+            if (arquivo != null) {
+                try {
+                    Files.deleteIfExists(arquivo);
+                } catch (IOException ignored) {}
+            }
+        }
     }
 }

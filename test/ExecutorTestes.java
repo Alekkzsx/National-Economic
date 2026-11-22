@@ -48,7 +48,9 @@ public final class ExecutorTestes {
             "test.dominio.TesteCliente",
             "test.servico.TesteSGI",
             "mercado.TesteProvedorCotacoesBancoCentral",
+            "mercado.TesteServidorCotacoes",
             "TesteSistemaInvestimentos",
+            "test.integracao.TesteIntegracaoCotacoesSGI",
             "terminal.TesteEntradaTerminal"
         };
 
@@ -105,7 +107,7 @@ public final class ExecutorTestes {
         System.out.printf("Tempo Total de Execução: %d ms%n", duracaoTotal);
         System.out.println("================================================================================");
 
-        if (falhadas > 0) {
+        if (falhadas > 0 || ignoradas > 0) {
             System.err.println(">>> RESULTADO GERAL: FALHA.");
             System.exit(1);
         } else {

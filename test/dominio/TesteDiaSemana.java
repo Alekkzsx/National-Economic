@@ -33,6 +33,7 @@ public final class TesteDiaSemana {
         testarHerancaSegura(); testesExecutados++;
         testarSimulacaoCicloMensal(); testesExecutados++;
         testarAliasesLegadosCompatibilidade(); testesExecutados++;
+        testarCalcularDiaSemanaPolimorficoEOraculo(); testesExecutados++;
 
         long duracao = System.currentTimeMillis() - inicio;
         System.out.printf(">>> TesteDiaSemana CONCLUÍDO com SUCESSO: %d métodos verificados (%d ms)%n%n",
@@ -310,5 +311,36 @@ public final class TesteDiaSemana {
         afirmarIgual("sábado", data.dayOfWeekName().toLowerCase(), "dayOfWeekName() deve retornar 'sábado'");
         afirmarIgual(1, data.dayOfWeek(25, 10, 2026), "dayOfWeek(overload) deve calcular 1");
         afirmarIgual("segunda-feira", data.dayOfWeekName(26, 10, 2026).toLowerCase(), "dayOfWeekName(overload)");
+    }
+
+    /** Valida o método calcularDiaSemana (Item 3) e compara Zeller com LocalDate em vários séculos. */
+    public static void testarCalcularDiaSemanaPolimorficoEOraculo() {
+        DiaSemana instancia = new DiaSemana(24, 10, 2026);
+        afirmarIgual(0, instancia.calcularDiaSemana(), "calcularDiaSemana() retorna 0 para sábado");
+        afirmarIgual(2, instancia.calcularDiaSemana(26, 10, 2026), "calcularDiaSemana(d,m,a) retorna 2");
+        afirmarIgual(6, instancia.calcularDiaSemana(LocalDate.of(2026, 10, 30)), "calcularDiaSemana(LocalDate) retorna 6");
+        afirmarIgual(0, instancia.getDiaSemana(), "sobrecargas não alteram o estado da instância");
+
+        afirmarRejeicao(() -> instancia.calcularDiaSemana(31, 2, 2026), IllegalArgumentException.class, "data inválida");
+        afirmarRejeicao(() -> instancia.calcularDiaSemana((LocalDate) null), NullPointerException.class, "data nula");
+
+        // Oráculo compacto multi-século contra java.time.LocalDate
+        LocalDate[] marcos = {
+                LocalDate.of(1900, 1, 1), LocalDate.of(1900, 3, 1),
+                LocalDate.of(2000, 2, 29), LocalDate.of(2024, 2, 29),
+                LocalDate.of(2026, 1, 1), LocalDate.of(2100, 3, 1)
+        };
+        for (LocalDate data : marcos) {
+            int esperado = switch (data.getDayOfWeek()) {
+                case SATURDAY -> 0;
+                case SUNDAY -> 1;
+                case MONDAY -> 2;
+                case TUESDAY -> 3;
+                case WEDNESDAY -> 4;
+                case THURSDAY -> 5;
+                case FRIDAY -> 6;
+            };
+            afirmarIgual(esperado, instancia.calcularDiaSemana(data), "Zeller bate com LocalDate em " + data);
+        }
     }
 }
