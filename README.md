@@ -48,46 +48,58 @@ Compila `src/` e `test/` do zero em `compilado/` e executa todas as **13 suítes
 
 ## Organização do projeto ("o que pertence ao quê")
 
-Cada pasta principal possui sua própria subpasta `util/` com os códigos reutilizáveis daquela camada:
+Cada pasta principal segue a mesma estrutura simétrica: classes concretas na raiz da pasta,
+`abstracoes/` com as classes abstratas da camada e `util/` com os códigos reutilizáveis:
 
 ```text
 src/
-├── Main.java                                # Itens 8 e 9 — Menu CRUD interativo + cotações
+├── Main.java                                # Itens 8 e 9 — Menu CRUD interativo (extends InterfaceTerminal)
 ├── dominio/                                 # Itens 1 a 6 — Regras de negócio (passíveis de herança)
 │   ├── AplicacaoFinanceira.java             # Item 1 — 19 atributos, taxas 30d, juros e resgates
 │   ├── CalculadoraTributaria.java           # Item 1 (apoio) — IOF e IR regressivo
-│   ├── OperacaoFinanceira.java              # Item 2 — Lançamento de depósito/retirada
-│   ├── DiaSemana.java                       # Item 3 — Algoritmo de Zeller (0..6) e dia útil
-│   ├── MultiplasOperacoesFinanceiras.java   # Item 4 — 1 Aplicação + até 100 Operações + DiaSemana
+│   ├── OperacaoFinanceira.java              # Item 2 — Lançamento de depósito/retirada (extends RegistroDatado)
+│   ├── DiaSemana.java                       # Item 3 — Algoritmo de Zeller (0..6) e dia útil (extends RegistroDatado)
+│   ├── MultiplasOperacoesFinanceiras.java   # Item 4 — 1 Aplicação + 100 Operações (extends CarteiraFinanceira)
 │   ├── DADOSPESSOAIS.java                   # Item 5 — Nome, CPF (Receita Federal/LGPD) e celular
-│   ├── Cliente.java                         # Item 6 — Titular, agência/conta e até 50 Aplicações
+│   ├── Cliente.java                         # Item 6 — Titular + 50 Aplicações (extends CarteiraFinanceira)
 │   ├── Moeda.java                           # Apoio — Parsing BR/US, arredondamento e formatação
 │   ├── [7 Enums de domínio]                 # TipoOperacao, TipoRendimento, TipoResgate, OpcaoIOF,
 │   │                                        # OpcaoIR, ConvencaoContagemDias, RegimeTributario
+│   ├── abstracoes/                          # Classes abstratas do domínio
+│   │   ├── RegistroDatado.java              # Base abstrata de data civil (DiaSemana, OperacaoFinanceira)
+│   │   └── CarteiraFinanceira.java          # Base abstrata de gestão financeira (MOF, Cliente, SGI)
 │   └── util/                                # Códigos reutilizáveis do domínio
 │       ├── ArquivoTSV.java                  # Escrita atômica, fsync, POSIX 0600 e codecs TSV v3
 │       └── ValidacaoDominio.java            # Validações comuns (texto, data civil, CPF)
 ├── servico/                                 # Item 7 — Fachada global do sistema
-│   ├── SGI.java                             # Item 7 — Até 100 Clientes, saldos/extratos 3 níveis
-│   ├── ArmazenadorArquivo.java              # Persistência global TSV v3 (retrocompatível v1–v3)
+│   ├── SGI.java                             # Item 7 — Até 100 Clientes (extends CarteiraFinanceira)
+│   ├── ArmazenadorArquivo.java              # Persistência global TSV v3 (extends ArmazenadorBase<SGI>)
+│   ├── abstracoes/                          # Classes abstratas de serviço
+│   │   └── ArmazenadorBase.java             # Base abstrata genérica de persistência em arquivo
 │   └── util/                                # Códigos reutilizáveis de serviço
 │       └── CotacoesUtil.java                # Normalização USD<->DOLAR, EUR<->EURO e consulta
 ├── terminal/                                # Itens 8 e 9 — Interação de console
 │   ├── EntradaTerminal.java                 # Leitura validada com padrões via Enter
 │   ├── TermosInvestimento.java              # Configuração personalizada usando enums de dominio/
+│   ├── abstracoes/                          # Classes abstratas de terminal
+│   │   └── InterfaceTerminal.java           # Template Method do laço interativo de menu (Main)
 │   └── util/                                # Códigos reutilizáveis do terminal
 │       ├── FormatadorTerminal.java          # Formatação de moeda, taxas, câmbio e máscara CPF
 │       └── AuxiliarCotacoes.java            # Conversão SELICRA/CDIR e BRL<->USD/EUR no CRUD
 ├── mercado/                                 # Item 9 — Cliente/Servidor TCP + BCB PTAX
 │   ├── PrincipalServidorCotacoes.java       # Inicialização do servidor ([porta] SELICRA CDIR)
 │   ├── ServidorCotacoes.java                # Servidor TCP multithread (ThreadPoolExecutor)
-│   ├── ClienteCotacoes.java                 # Cliente TCP síncrono
-│   ├── ProvedorCotacoesBancoCentral.java    # Consulta PTAX oficial do Banco Central do Brasil
+│   ├── ClienteCotacoes.java                 # Cliente TCP síncrono (extends ProvedorCotacoes)
+│   ├── ProvedorCotacoesBancoCentral.java    # Consulta PTAX oficial do BCB (extends ProvedorCotacoes)
+│   ├── abstracoes/                          # Classes abstratas de mercado
+│   │   └── ProvedorCotacoes.java            # Base abstrata de origens de cotações (TCP e BCB PTAX)
 │   └── util/                                # Códigos reutilizáveis de mercado/rede
 │       └── ProtocoloCotacoes.java           # Protocolo ASCII, validação simétrica e fechamento seguro
 └── legado/                                  # Isolado: compatibilidade e migração de arquivos antigos
     ├── modelo/                              # Modelo legado mantido para leitura de arquivos antigos
     ├── servicos/                            # SistemaInvestimentos, ArmazenadorInvestimentos e Migrador
+    ├── abstracoes/                          # Classes abstratas do legado
+    │   └── RegistroDatadoLegado.java        # Base abstrata de data civil legada
     └── util/                                # Códigos reutilizáveis de migração
         └── ConversorLegado.java             # Conversão legado.modelo -> dominio
 

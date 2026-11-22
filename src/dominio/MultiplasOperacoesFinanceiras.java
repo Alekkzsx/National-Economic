@@ -1,5 +1,6 @@
 package dominio;
 
+import dominio.abstracoes.CarteiraFinanceira;
 import dominio.util.ArquivoTSV;
 import dominio.util.ValidacaoDominio;
 
@@ -24,7 +25,7 @@ import java.util.Objects;
  * <p>Restringe atualizações de rendimento a dias úteis (segunda a sexta), oferece extratos
  * polimórficos e persistência individual em disco.</p>
  */
-public class MultiplasOperacoesFinanceiras {
+public class MultiplasOperacoesFinanceiras extends CarteiraFinanceira {
 
     public static final int LIMITE_OPERACOES = 100;
 
@@ -188,15 +189,12 @@ public class MultiplasOperacoesFinanceiras {
     // Atualização em dias úteis (segunda a sexta-feira via DiaSemana)
     // -------------------------------------------------------------------------
 
-    public void atualizarAplicacao() {
-        atualizarAplicacao(LocalDate.now());
-    }
-
     public void atualizarAplicacao(int dia, int mes, int ano) {
         atualizarAplicacao(ValidacaoDominio.validarData(dia, mes, ano));
     }
 
     /** Atualiza a aplicação somente se {@code data} for dia útil (segunda a sexta). */
+    @Override
     public void atualizarAplicacao(LocalDate data) {
         if (data == null) {
             throw new IllegalArgumentException("Data de referência para atualização não pode ser nula.");
@@ -219,6 +217,7 @@ public class MultiplasOperacoesFinanceiras {
     // Extratos polimórficos (últimos 30 dias inclusivos ou entre datas)
     // -------------------------------------------------------------------------
 
+    @Override
     public List<OperacaoFinanceira> getExtrato() {
         LocalDate fim = (this.calendario != null && this.calendario.getData() != null)
                 ? this.calendario.getData()
@@ -233,6 +232,7 @@ public class MultiplasOperacoesFinanceiras {
         return getExtrato(dataReferencia.minusDays(29), dataReferencia);
     }
 
+    @Override
     public List<OperacaoFinanceira> getExtrato(LocalDate inicio, LocalDate fim) {
         if (inicio == null) throw new IllegalArgumentException("Data inicial obrigatória.");
         if (fim == null) throw new IllegalArgumentException("Data final obrigatória.");
@@ -255,6 +255,7 @@ public class MultiplasOperacoesFinanceiras {
     // Saldos, Getters e Setters
     // -------------------------------------------------------------------------
 
+    @Override
     public BigDecimal getSaldo() { return this.aplicacao.getValorAtualLiquido(); }
     public BigDecimal getSaldoLiquido() { return getSaldo(); }
     public BigDecimal getSaldoBruto() { return this.aplicacao.getValorAtualBruto(); }
@@ -324,6 +325,7 @@ public class MultiplasOperacoesFinanceiras {
         arquivoSalvarDados(Path.of("data/aplicacao_" + this.aplicacao.getNumeroAplicacao() + ".db"));
     }
 
+    @Override
     public void arquivoSalvarDados(String caminho) throws IOException {
         if (caminho == null || caminho.isBlank()) {
             throw new IllegalArgumentException("Caminho do arquivo não pode ser nulo ou vazio.");
@@ -331,6 +333,7 @@ public class MultiplasOperacoesFinanceiras {
         arquivoSalvarDados(Path.of(caminho));
     }
 
+    @Override
     public void arquivoSalvarDados(Path caminho) throws IOException {
         Objects.requireNonNull(caminho, "Caminho do arquivo é obrigatório.");
         ArquivoTSV.escreverAtomico(caminho, writer -> {

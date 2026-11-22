@@ -5,6 +5,7 @@ import static test.Afirmacao.*;
 import dominio.AplicacaoFinanceira;
 import dominio.TipoRendimento;
 import servico.SGI;
+import terminal.abstracoes.InterfaceTerminal;
 import terminal.util.AuxiliarCotacoes;
 import terminal.util.FormatadorTerminal;
 
@@ -31,6 +32,7 @@ public final class TesteEntradaTerminal {
             testarFormatadorTerminal();
             testarTermosInvestimentoComDominio();
             testarAuxiliarCotacoes();
+            testarInterfaceTerminalTemplateMethod();
         } finally {
             System.setOut(saidaOriginal);
         }
@@ -103,5 +105,32 @@ public final class TesteEntradaTerminal {
                 AuxiliarCotacoes.lerValorEmReal(entrada, sgi, "Valor: "), "valor USD convertido para BRL");
         afirmarVerdadeiro(AuxiliarCotacoes.resumoStatus(sgi).contains("SELICRA 12.00% a.a."),
                 "resumoStatus inclui SELICRA formatada");
+    }
+
+    private static void testarInterfaceTerminalTemplateMethod() {
+        int[] chamadas = {0, 0}; // [opcoesProcessadas, encerrarChamado]
+        EntradaTerminal entrada = new EntradaTerminal(new Scanner("ok\nerro\n0\n"));
+        InterfaceTerminal menu = new InterfaceTerminal(entrada) {
+            @Override
+            protected void exibirMenu() {
+            }
+
+            @Override
+            protected boolean processarOpcao(String opcao) {
+                chamadas[0]++;
+                if ("erro".equals(opcao)) {
+                    throw new IllegalArgumentException("CPF 529.982.247-25 falhou");
+                }
+                return !"0".equals(opcao);
+            }
+
+            @Override
+            protected void encerrar() {
+                chamadas[1]++;
+            }
+        };
+        menu.executar();
+        afirmarIgual(3, chamadas[0], "Template Method continuou após RuntimeException até opção 0");
+        afirmarIgual(1, chamadas[1], "Template Method chamou encerrar() ao finalizar");
     }
 }

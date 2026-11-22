@@ -10,6 +10,7 @@ import mercado.ClienteCotacoes;
 import servico.SGI;
 import terminal.EntradaTerminal;
 import terminal.TermosInvestimento;
+import terminal.abstracoes.InterfaceTerminal;
 import terminal.util.AuxiliarCotacoes;
 import terminal.util.FormatadorTerminal;
 
@@ -27,7 +28,7 @@ import java.util.Scanner;
  * Itens 8 e 9 — Ponto de entrada e menu CRUD interativo do SGI no terminal,
  * integrado ao servidor de cotações (SELICRA, CDIR, USD e EUR).
  */
-public final class Main {
+public final class Main extends InterfaceTerminal {
 
     private static final Path ARQUIVO_PADRAO = Path.of("data", "sgi.db");
     private static final int DIAS_EXTRATO_PADRAO = 30;
@@ -35,12 +36,11 @@ public final class Main {
     private static final int PORTA_MAXIMA = 65_535;
     private static final String FORMATO_DATA = "(AAAA-MM-DD): ";
 
-    private final EntradaTerminal entrada;
     private SGI sistema;
     private boolean salvarAutomaticamenteAoSair;
 
     private Main(EntradaTerminal entrada, EstadoInicial estadoInicial) {
-        this.entrada = entrada;
+        super(entrada);
         this.sistema = estadoInicial.sistema();
         this.salvarAutomaticamenteAoSair = estadoInicial.salvarAutomaticamenteAoSair();
     }
@@ -52,7 +52,7 @@ public final class Main {
     }
 
     // -------------------------------------------------------------------------
-    // Ciclo de vida e menu
+    // Ciclo de vida e menu (Template Method herdado de InterfaceTerminal)
     // -------------------------------------------------------------------------
 
     private static EstadoInicial carregarEstadoPadrao() {
@@ -70,22 +70,8 @@ public final class Main {
         }
     }
 
-    private void executar() {
-        boolean emExecucao = true;
-        while (emExecucao) {
-            try {
-                exibirMenu();
-                emExecucao = processarOpcao(entrada.lerLinha("Escolha uma opção: ").trim());
-            } catch (EntradaTerminal.EndOfInputException e) {
-                emExecucao = false;
-            } catch (RuntimeException e) {
-                System.out.println("Não foi possível concluir a operação: " + FormatadorTerminal.mensagemDe(e));
-            }
-        }
-        encerrar();
-    }
-
-    private boolean processarOpcao(String opcao) {
+    @Override
+    protected boolean processarOpcao(String opcao) {
         switch (opcao) {
             case "1" -> cadastrarCliente();
             case "2" -> listarClientes();
@@ -116,7 +102,8 @@ public final class Main {
         return true;
     }
 
-    private void encerrar() {
+    @Override
+    protected void encerrar() {
         if (salvarAutomaticamenteAoSair) {
             salvarEm(ARQUIVO_PADRAO);
         } else {
@@ -125,7 +112,8 @@ public final class Main {
         System.out.println("SGI encerrado.");
     }
 
-    private void exibirMenu() {
+    @Override
+    protected void exibirMenu() {
         String statusCotacoes = AuxiliarCotacoes.resumoStatus(sistema);
         System.out.println();
         System.out.println("===== Sistema de Gestão de Investimentos (SGI) =====");

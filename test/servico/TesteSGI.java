@@ -10,8 +10,10 @@ import dominio.MultiplasOperacoesFinanceiras;
 import dominio.OperacaoFinanceira;
 import dominio.RegimeTributario;
 import dominio.TipoOperacao;
+import dominio.abstracoes.CarteiraFinanceira;
 import servico.ArmazenadorArquivo;
 import servico.SGI;
+import servico.abstracoes.ArmazenadorBase;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -1072,5 +1074,24 @@ public final class TesteSGI {
         sgi.setCotacoes(Map.of("CDIR", new BigDecimal("9.50"), "USD", new BigDecimal("5.20")));
         afirmarVerdadeiro(sgi.getCotacao("SELICRA").isEmpty(), "setCotacoes substitui chaves antigas");
         afirmarIgual(new BigDecimal("5.20"), sgi.getCotacao("DOLAR").orElse(null), "espelhamento USD->DOLAR mantido");
+
+        // Polimorfismo via dominio.abstracoes.CarteiraFinanceira (MOF, Cliente e SGI) e ArmazenadorBase<SGI>
+        LocalDate dataInicio = LocalDate.of(2026, 8, 3);
+        MultiplasOperacoesFinanceiras mof = new MultiplasOperacoesFinanceiras(
+                new AplicacaoFinanceira("CDB Poli", "POLI-1", new BigDecimal("500.00"), new BigDecimal("0.01"), dataInicio));
+        Cliente cli = new Cliente("Polimórfico", gerarCpfValido(503), "11999990003", 1, 10L);
+        cli.adicionarAplicacao(mof);
+        SGI sgiPoli = new SGI();
+        sgiPoli.cadastrarCliente(cli);
+
+        for (CarteiraFinanceira carteira : List.<CarteiraFinanceira>of(mof, cli, sgiPoli)) {
+            afirmarIgual(new BigDecimal("500.00"), carteira.getSaldo(), "CarteiraFinanceira.getSaldo()");
+            afirmarVerdadeiro(carteira.getExtrato().isEmpty(), "CarteiraFinanceira.getExtrato()");
+        }
+        sgiPoli.atualizarAplicacao(dataInicio.plusDays(1));
+        afirmarVerdadeiro(mof.getSaldo().compareTo(new BigDecimal("500.00")) > 0, "atualização polimórfica evoluiu saldo");
+
+        ArmazenadorBase<SGI> armazenador = new ArmazenadorArquivo();
+        afirmarIgual(ArmazenadorArquivo.CAMINHO_PADRAO, armazenador.getCaminhoPadrao(), "ArmazenadorBase mantém caminho padrão");
     }
 }

@@ -1,5 +1,6 @@
 package dominio;
 
+import dominio.abstracoes.CarteiraFinanceira;
 import dominio.util.ArquivoTSV;
 
 import java.io.BufferedReader;
@@ -11,7 +12,6 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -24,7 +24,7 @@ import java.util.Set;
  *
  * <p>Classe passível de herança, com construtores seguros sem despacho virtual.</p>
  */
-public class Cliente {
+public class Cliente extends CarteiraFinanceira {
 
     public static final int LIMITE_APLICACOES = 50;
 
@@ -177,12 +177,8 @@ public class Cliente {
     // Atualização em dias úteis (segunda a sexta via Item 4)
     // -------------------------------------------------------------------------
 
-    /** Atualiza todas as aplicações do cliente na data atual (nome do enunciado). */
-    public void atualizarAplicacao() {
-        atualizarAplicacao(LocalDate.now());
-    }
-
     /** Atualiza todas as aplicações do cliente na data informada (somente dias úteis). */
+    @Override
     public void atualizarAplicacao(LocalDate data) {
         Objects.requireNonNull(data, "Data de atualização é obrigatória.");
         for (MultiplasOperacoesFinanceiras item : aplicacoes) {
@@ -203,6 +199,7 @@ public class Cliente {
     // -------------------------------------------------------------------------
 
     /** Retorna o saldo líquido consolidado de todas as aplicações do cliente. */
+    @Override
     public BigDecimal getSaldo() {
         return getSaldoConsolidado();
     }
@@ -223,11 +220,13 @@ public class Cliente {
     }
 
     /** Retorna o extrato consolidado de todas as aplicações nos últimos 30 dias. */
+    @Override
     public List<OperacaoFinanceira> getExtrato() {
         return getExtratoConsolidado();
     }
 
     /** Retorna o extrato consolidado de todas as aplicações entre duas datas (polimórfico). */
+    @Override
     public List<OperacaoFinanceira> getExtrato(LocalDate inicio, LocalDate fim) {
         return getExtratoConsolidado(inicio, fim);
     }
@@ -245,8 +244,7 @@ public class Cliente {
         for (MultiplasOperacoesFinanceiras item : aplicacoes) {
             consolidado.addAll(item.getExtrato());
         }
-        consolidado.sort(Comparator.comparing(OperacaoFinanceira::getData));
-        return Collections.unmodifiableList(consolidado);
+        return ordenarExtrato(consolidado);
     }
 
     public List<OperacaoFinanceira> getExtratoConsolidado(LocalDate inicio, LocalDate fim) {
@@ -259,19 +257,14 @@ public class Cliente {
         for (MultiplasOperacoesFinanceiras item : aplicacoes) {
             consolidado.addAll(item.getExtrato(inicio, fim));
         }
-        consolidado.sort(Comparator.comparing(OperacaoFinanceira::getData));
-        return Collections.unmodifiableList(consolidado);
+        return ordenarExtrato(consolidado);
     }
 
     // -------------------------------------------------------------------------
     // Persistência individual em arquivo TSV v3 (via dominio.util.ArquivoTSV)
     // -------------------------------------------------------------------------
 
-    public void arquivoSalvarDados(String caminho) throws IOException {
-        Objects.requireNonNull(caminho, "Caminho do arquivo é obrigatório.");
-        arquivoSalvarDados(Path.of(caminho));
-    }
-
+    @Override
     public void arquivoSalvarDados(Path caminho) throws IOException {
         Objects.requireNonNull(caminho, "Caminho do arquivo é obrigatório.");
         String cpf = dadosPessoais.getCpf();

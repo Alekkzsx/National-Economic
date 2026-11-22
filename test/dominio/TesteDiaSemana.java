@@ -3,7 +3,12 @@ package test.dominio;
 import static test.Afirmacao.*;
 
 import dominio.DiaSemana;
+import dominio.OperacaoFinanceira;
+import dominio.TipoOperacao;
+import dominio.abstracoes.RegistroDatado;
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Suíte de testes autônomos para a classe {@link DiaSemana} (Item 3, Requisito R1.3).
@@ -342,5 +347,16 @@ public final class TesteDiaSemana {
             };
             afirmarIgual(esperado, instancia.calcularDiaSemana(data), "Zeller bate com LocalDate em " + data);
         }
+
+        // Polimorfismo via dominio.abstracoes.RegistroDatado (DiaSemana + OperacaoFinanceira)
+        DiaSemana ds = new DiaSemana(24, 10, 2026);
+        OperacaoFinanceira op = new OperacaoFinanceira(24, 10, 2026, new BigDecimal("50.00"), "Teste", TipoOperacao.DEPOSITO);
+        for (RegistroDatado registro : List.<RegistroDatado>of(ds, op)) {
+            registro.setData(LocalDate.of(2026, 10, 26)); // Segunda-feira
+            afirmarIgual(26, registro.getDia(), "RegistroDatado sincroniza dia");
+            afirmarIgual(10, registro.getMes(), "RegistroDatado sincroniza mês");
+            afirmarIgual(2026, registro.getAno(), "RegistroDatado sincroniza ano");
+        }
+        afirmarIgual(2, ds.getDiaSemana(), "hook aoAlterarData recalculou DiaSemana para segunda (2)");
     }
 }

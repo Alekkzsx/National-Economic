@@ -3,10 +3,10 @@ package servico;
 import dominio.AplicacaoFinanceira;
 import dominio.Cliente;
 import dominio.DADOSPESSOAIS;
-import dominio.DiaSemana;
 import dominio.Moeda;
 import dominio.MultiplasOperacoesFinanceiras;
 import dominio.OperacaoFinanceira;
+import dominio.abstracoes.CarteiraFinanceira;
 import dominio.util.ValidacaoDominio;
 import servico.util.CotacoesUtil;
 
@@ -16,7 +16,6 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,7 +32,7 @@ import java.util.Set;
  * (aplicação, cliente e sistema), mantém cotações de mercado e persiste o estado via
  * {@link ArmazenadorArquivo}. Passível de herança e thread-safe ({@code synchronized}).</p>
  */
-public class SGI {
+public class SGI extends CarteiraFinanceira {
 
     public static final int LIMITE_CLIENTES = 100;
     public static final Path CAMINHO_PADRAO_DADOS = Path.of("data", "sgi.db");
@@ -239,14 +238,16 @@ public class SGI {
     // -------------------------------------------------------------------------
 
     /** Atualiza todas as aplicações cadastradas na data atual (nome do enunciado). */
+    @Override
     public synchronized void atualizarAplicacao() {
         atualizarAplicacao(LocalDate.now());
     }
 
     /** Atualiza todas as aplicações na data informada; fins de semana são ignorados. */
+    @Override
     public synchronized void atualizarAplicacao(LocalDate data) {
         Objects.requireNonNull(data, "Data de atualização é obrigatória.");
-        if (!new DiaSemana(data).ehDiaUtil()) {
+        if (!ehDiaUtil(data)) {
             return;
         }
         for (Cliente cliente : clientes.values()) {
@@ -277,6 +278,7 @@ public class SGI {
         return requererCliente(cpf).getSaldo();
     }
 
+    @Override
     public synchronized BigDecimal getSaldo() {
         BigDecimal total = BigDecimal.ZERO;
         for (Cliente cliente : clientes.values()) {
@@ -361,15 +363,16 @@ public class SGI {
         return getExtrato(cpf, LocalDate.of(anoIni, mesIni, diaIni), LocalDate.of(anoFim, mesFim, diaFim));
     }
 
+    @Override
     public synchronized List<OperacaoFinanceira> getExtrato() {
         List<OperacaoFinanceira> unificado = new ArrayList<>();
         for (Cliente cliente : clientes.values()) {
             unificado.addAll(cliente.getExtrato());
         }
-        unificado.sort(Comparator.comparing(OperacaoFinanceira::getData));
-        return Collections.unmodifiableList(unificado);
+        return ordenarExtrato(unificado);
     }
 
+    @Override
     public synchronized List<OperacaoFinanceira> getExtrato(LocalDate inicio, LocalDate fim) {
         Objects.requireNonNull(inicio, "Data inicial é obrigatória.");
         Objects.requireNonNull(fim, "Data final é obrigatória.");
@@ -380,8 +383,7 @@ public class SGI {
         for (Cliente cliente : clientes.values()) {
             unificado.addAll(cliente.getExtrato(inicio, fim));
         }
-        unificado.sort(Comparator.comparing(OperacaoFinanceira::getData));
-        return Collections.unmodifiableList(unificado);
+        return ordenarExtrato(unificado);
     }
 
     public synchronized List<OperacaoFinanceira> getExtrato(int diaIni, int mesIni, int anoIni,
@@ -393,11 +395,13 @@ public class SGI {
     // Persistência em arquivo (Item 7)
     // -------------------------------------------------------------------------
 
+    @Override
     public synchronized void arquivoSalvarDados(Path caminho) throws IOException {
         Objects.requireNonNull(caminho, "Caminho do arquivo é obrigatório.");
         ArmazenadorArquivo.salvarDados(caminho, this.clientes.values());
     }
 
+    @Override
     public synchronized void arquivoSalvarDados(String caminho) throws IOException {
         Objects.requireNonNull(caminho, "Caminho do arquivo é obrigatório.");
         arquivoSalvarDados(Path.of(caminho));

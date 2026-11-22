@@ -5,6 +5,7 @@ import dominio.MultiplasOperacoesFinanceiras;
 import dominio.OperacaoFinanceira;
 import dominio.util.ArquivoTSV;
 import dominio.util.ValidacaoDominio;
+import servico.abstracoes.ArmazenadorBase;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -22,51 +23,36 @@ import java.util.Objects;
 /**
  * Persistência global do {@link SGI} em formato TSV versionado (v3, leitura retrocompatível v1–v3).
  *
- * <p>Delega escape, codecs de linha {@code C/I/O}, {@code fsync}, troca atômica e permissões
- * POSIX 0600 para {@link ArquivoTSV}, mantendo ganchos {@code protected} para herança.</p>
+ * <p>Estende {@link ArmazenadorBase} e delega escape, codecs de linha {@code C/I/O}, {@code fsync},
+ * troca atômica e permissões POSIX 0600 para {@link ArquivoTSV}.</p>
  */
-public class ArmazenadorArquivo {
+public class ArmazenadorArquivo extends ArmazenadorBase<SGI> {
 
     public static final String CABECALHO_V3 = ArquivoTSV.CABECALHO_V3;
     public static final String CABECALHO_V2 = "NATIONAL-ECONOMIC\t2";
     public static final String CABECALHO_V1 = "NATIONAL-ECONOMIC\t1";
     public static final Path CAMINHO_PADRAO = Path.of("data/sgi.db");
 
-    private final Path caminhoPadrao;
-
     public ArmazenadorArquivo() {
-        this(CAMINHO_PADRAO);
+        super(CAMINHO_PADRAO);
     }
 
     public ArmazenadorArquivo(Path caminhoPadrao) {
-        this.caminhoPadrao = Objects.requireNonNull(caminhoPadrao, "Caminho padrão não pode ser nulo.");
+        super(caminhoPadrao);
     }
 
     public ArmazenadorArquivo(String caminhoPadrao) {
-        this(Path.of(Objects.requireNonNull(caminhoPadrao, "Caminho padrão não pode ser nulo.")));
-    }
-
-    public Path getCaminhoPadrao() {
-        return caminhoPadrao;
+        super(caminhoPadrao);
     }
 
     // -------------------------------------------------------------------------
     // Gravação atômica
     // -------------------------------------------------------------------------
 
-    public void salvar(SGI sgi) throws IOException {
-        Objects.requireNonNull(sgi, "Instância de SGI não pode ser nula.");
-        salvar(this.caminhoPadrao, sgi.getClientes());
-    }
-
+    @Override
     public void salvar(Path caminho, SGI sgi) throws IOException {
         Objects.requireNonNull(sgi, "Instância de SGI não pode ser nula.");
         salvar(caminho, sgi.getClientes());
-    }
-
-    public void salvar(String caminho, SGI sgi) throws IOException {
-        Objects.requireNonNull(caminho, "Caminho não pode ser nulo.");
-        salvar(Path.of(caminho), sgi);
     }
 
     public void salvar(Path caminho, Collection<Cliente> clientes) throws IOException {
@@ -102,25 +88,14 @@ public class ArmazenadorArquivo {
     // Leitura e reconstrução com validação rigorosa (versões 1 a 3)
     // -------------------------------------------------------------------------
 
-    public SGI carregar() throws IOException {
-        return carregar(this.caminhoPadrao);
-    }
-
+    @Override
     public SGI carregar(Path caminho) throws IOException {
-        Objects.requireNonNull(caminho, "Caminho do arquivo não pode ser nulo.");
-        if (!Files.exists(caminho)) {
-            throw new IllegalArgumentException("Arquivo de dados não encontrado: " + caminho);
-        }
+        exigirArquivoExistente(caminho);
         SGI sgi = new SGI();
         for (Cliente cliente : carregarListaClientes(caminho)) {
             sgi.cadastrarCliente(cliente);
         }
         return sgi;
-    }
-
-    public SGI carregar(String caminho) throws IOException {
-        Objects.requireNonNull(caminho, "Caminho do arquivo não pode ser nulo.");
-        return carregar(Path.of(caminho));
     }
 
     public List<Cliente> carregarClientes(Path caminho) throws IOException {
@@ -136,10 +111,7 @@ public class ArmazenadorArquivo {
     }
 
     public static List<Cliente> carregarListaClientes(Path caminho) throws IOException {
-        Objects.requireNonNull(caminho, "Caminho do arquivo não pode ser nulo.");
-        if (!Files.exists(caminho)) {
-            throw new IllegalArgumentException("Arquivo de dados não encontrado: " + caminho);
-        }
+        exigirArquivoExistente(caminho);
 
         Map<String, Cliente> clientesPorCpf = new LinkedHashMap<>();
         Map<String, MultiplasOperacoesFinanceiras> aplicacoesPorNumero = new LinkedHashMap<>();

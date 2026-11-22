@@ -1,5 +1,7 @@
 package legado.modelo;
 
+import legado.abstracoes.RegistroDatadoLegado;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Objects;
@@ -11,9 +13,7 @@ import java.util.Objects;
  * exercício. Cada valor é validado antes de ser armazenado; quantias são
  * arredondadas para duas casas decimais.</p>
  */
-public class OperacaoFinanceira {
-    /** Data em que o lançamento financeiro foi realizado. */
-    private LocalDate data;
+public class OperacaoFinanceira extends RegistroDatadoLegado {
     /** Valor positivo do lançamento, sempre mantido com escala de centavos. */
     private BigDecimal valor;
     /** Texto que explica a origem ou finalidade do lançamento. */
@@ -23,7 +23,7 @@ public class OperacaoFinanceira {
 
     /** Cria a operação usando as mesmas validações do cadastro. */
     public OperacaoFinanceira(LocalDate data, BigDecimal valor, String descricao, TipoOperacao tipo) {
-        this.data = Objects.requireNonNull(data, "Data obrigatória.");
+        super(data);
         this.tipo = Objects.requireNonNull(tipo, "Tipo obrigatório.");
         this.valor = validarValor(valor);
         this.descricao = validarDescricao(descricao);
@@ -31,26 +31,19 @@ public class OperacaoFinanceira {
 
     // Os accessors sem prefixo preservam o formato de acesso usado pelo extrato.
     /** Retorna a data do lançamento. */
-    public LocalDate data() { return data; }
+    public LocalDate data() { return getData(); }
     /** Retorna o valor em centavos. */
     public BigDecimal valor() { return valor; }
     /** Retorna a descrição registrada. */
     public String descricao() { return descricao; }
     /** Retorna o tipo de operação. */
     public TipoOperacao tipo() { return tipo; }
-    /** Getter JavaBeans para a data do lançamento. */
-    public LocalDate getData() { return data; }
     /** Getter JavaBeans para o valor da operação. */
     public BigDecimal getValor() { return valor; }
     /** Getter JavaBeans para a descrição. */
     public String getDescricao() { return descricao; }
     /** Getter JavaBeans para o tipo da operação. */
     public TipoOperacao getTipo() { return tipo; }
-
-    /** Substitui a data do lançamento, que não pode ser nula. */
-    public void setData(LocalDate data) {
-        this.data = Objects.requireNonNull(data, "Data obrigatória.");
-    }
 
     /** Define um valor positivo e arredonda para centavos. */
     public void setValor(BigDecimal valor) {
@@ -79,7 +72,7 @@ public class OperacaoFinanceira {
         Objects.requireNonNull(tipo, "Tipo obrigatório.");
         BigDecimal rounded = validarValor(valor);
         String validDescription = validarDescricao(descricao);
-        this.data = data;
+        definirDataInterna(data);
         this.valor = rounded;
         this.descricao = validDescription;
         this.tipo = tipo;
@@ -107,7 +100,7 @@ public class OperacaoFinanceira {
     /** Retorna uma representação legível dos dados do lançamento. */
     @Override
     public String toString() {
-        return "OperacaoFinanceira{data=" + data + ", valor=" + valor + ", descricao='"
+        return "OperacaoFinanceira{data=" + getData() + ", valor=" + valor + ", descricao='"
                 + descricao + "', tipo=" + tipo + "}";
     }
 }

@@ -1,5 +1,7 @@
 package mercado;
 
+import mercado.abstracoes.ProvedorCotacoes;
+
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -7,7 +9,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -24,11 +25,11 @@ import java.util.regex.Pattern;
  * mais recente retornada. Para o euro, somente boletins de fechamento são
  * considerados.</p>
  */
-public final class ProvedorCotacoesBancoCentral {
+public final class ProvedorCotacoesBancoCentral extends ProvedorCotacoes {
     private static final String ENDERECO_BASE =
             "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/";
     private static final DateTimeFormatter DATA_SERVICO = DateTimeFormatter.ofPattern("MM-dd-yyyy");
-    private static final Duration TEMPO_LIMITE = Duration.ofSeconds(8);
+    private static final int TIMEOUT_MS = 8_000;
     private static final Pattern OBJETO_JSON = Pattern.compile("\\{([^{}]*)}");
     private static final Pattern COTACAO_VENDA =
             Pattern.compile("\"cotacaoVenda\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)");
@@ -41,8 +42,9 @@ public final class ProvedorCotacoesBancoCentral {
 
     /** Cria um cliente HTTP com limite de conexão e redirecionamentos seguros. */
     public ProvedorCotacoesBancoCentral() {
+        super("Banco Central do Brasil (PTAX)", TIMEOUT_MS);
         this.clienteHttp = HttpClient.newBuilder()
-                .connectTimeout(TEMPO_LIMITE)
+                .connectTimeout(getTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
@@ -55,6 +57,7 @@ public final class ProvedorCotacoesBancoCentral {
      *                     com sucesso ou não houver cotações recentes
      * @throws InterruptedException se a consulta for interrompida
      */
+    @Override
     public Map<String, BigDecimal> obterCotacoes() throws IOException, InterruptedException {
         LocalDate hoje = LocalDate.now();
         LocalDate inicio = hoje.minusDays(10);
@@ -80,7 +83,7 @@ public final class ProvedorCotacoesBancoCentral {
     private BigDecimal consultarCotacao(String caminho, boolean somenteFechamento)
             throws IOException, InterruptedException {
         HttpRequest requisicao = HttpRequest.newBuilder(URI.create(ENDERECO_BASE + caminho))
-                .timeout(TEMPO_LIMITE)
+                .timeout(getTimeout())
                 .header("Accept", "application/json")
                 .GET()
                 .build();

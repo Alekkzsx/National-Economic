@@ -2,6 +2,7 @@ package mercado;
 
 import static test.Afirmacao.*;
 
+import mercado.abstracoes.ProvedorCotacoes;
 import mercado.util.ProtocoloCotacoes;
 
 import java.io.ByteArrayInputStream;
@@ -159,6 +160,15 @@ public final class TesteServidorCotacoes {
             } finally {
                 pool.shutdownNow();
             }
+
+            // Polimorfismo via mercado.abstracoes.ProvedorCotacoes
+            ProvedorCotacoes provedorTcp = new ClienteCotacoes("127.0.0.1", servidor.getPorta());
+            afirmarVerdadeiro(provedorTcp.getNomeOrigem().contains("Servidor TCP"), "nomeOrigem TCP");
+            afirmarIgual(5_000, provedorTcp.getTimeoutMs(), "timeoutMs TCP");
+            afirmarIgual(new BigDecimal("5.20"), provedorTcp.consultarCotacao("usd").orElse(null),
+                    "consultarCotacao polimórfico encontra USD");
+            ProvedorCotacoes provedorBcb = new ProvedorCotacoesBancoCentral();
+            afirmarVerdadeiro(provedorBcb.getNomeOrigem().contains("Banco Central"), "nomeOrigem BCB");
         }
     }
 

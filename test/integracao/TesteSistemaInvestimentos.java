@@ -1,4 +1,5 @@
 
+import legado.abstracoes.RegistroDatadoLegado;
 import legado.modelo.OperacaoFinanceira;
 import legado.modelo.ConvencaoContagemDias;
 import legado.modelo.DataCalendario;
@@ -33,6 +34,7 @@ public final class TesteSistemaInvestimentos {
     public static void main(String[] args) throws Exception {
         // Confere o calendário didático e a validação de datas civis.
         DataCalendario calendarDate = new DataCalendario(24, 10, 2026);
+        check(calendarDate instanceof RegistroDatadoLegado, "DataCalendario estende RegistroDatadoLegado");
         check(calendarDate.diaDaSemana() == 0, "data sábado por extenso numérico");
         check(calendarDate.nomeDoDiaDaSemana().equals("sábado"), "nome do dia em pt-BR");
         check(calendarDate.diaDaSemana(25, 10, 2026) == 1, "overload numérico da data");
